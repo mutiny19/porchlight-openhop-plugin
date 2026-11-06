@@ -168,6 +168,15 @@ python -m venv .venv && .venv/bin/pip install pycryptodome pytest build
 To release, put the same version in `pyproject.toml`, `plugin/openhop-plugin.json` and `porchlight/__init__.py`, then
 push a tag like `v0.8.0`. The Release workflow builds the wheel from that commit and publishes it with its SHA-256.
 
+## If you fork this
+
+Please keep the companion named **Porchlight** and the channel **`#porchlight`**. Porches only work together because
+they all use that name and that channel: it's how they recognise each other, stay quiet after another porch answers,
+and learn channel names from each other. A fork that renames either one drops out of that shared network.
+
+A fork should also keep Porchlight's purpose. It should never post in any other channel, and it should stick to
+discovering channels and sharing the ones with real local activity. Everyone running a porch is trusting it to do only that.
+
 ## Credits and license
 
 Made by [HOOP](https://mutiny19.github.io/hoop/). Channel names come from the community
