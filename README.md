@@ -39,6 +39,11 @@ Every install is called **Porchlight** and says its area in the text. When sever
 nearest the asker answers first; the others hear that answer and stay quiet. Announcements wait a random moment and are
 skipped if another porch already posted the same one. Anyone answered by any porch counts as welcomed by all of them.
 
+Porches also learn from each other. Any `#name` in a message Porchlight can read, including another porch's post,
+becomes a name it tries. So a channel found by one porch can soon be named by the others. Sharing a name shares nothing
+else: a channel only appears here once this repeater hears traffic on it, and its ranking counts only the messages this
+repeater heard. A channel busy near another porch won't rank here just because that porch mentioned it.
+
 ## Install
 
 You need an openHop Repeater 1.1.4 or newer (the first release with plugins) and its dashboard login.
