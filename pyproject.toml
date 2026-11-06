@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "porchlight-openhop-plugin"
+version = "0.10.1"
+description = "Porchlight: every MeshCore channel an openHop repeater hears, and a porch light in #porchlight that tells visitors which channels are active nearby."
+readme = "README.md"
+license = "GPL-3.0-only"
+license-files = ["LICENSE"]
+requires-python = ">=3.9"
+dependencies = ["pycryptodome>=3.18"]
+
+[project.urls]
+Homepage = "https://github.com/mutiny19/porchlight-openhop-plugin"
+
+[project.scripts]
+porchlight = "porchlight.main:main"
+
+[project.optional-dependencies]
+test = ["pytest>=7"]
+
+[tool.setuptools]
+packages = ["porchlight"]
+
+# openHop reads the manifest, default settings and page from <dist>.data/data/share/openhop/plugins/<plugin id>/
+[tool.setuptools.data-files]
+"share/openhop/plugins/porchlight" = ["plugin/openhop-plugin.json", "plugin/config.default.json"]
+"share/openhop/plugins/porchlight/ui" = ["plugin/ui/index.html", "plugin/ui/logo.svg"]

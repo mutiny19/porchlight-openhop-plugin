@@ -1,0 +1,43 @@
+{
+  "api_base": "http://127.0.0.1:8000",
+  "poll_seconds": 5,
+  "per_channel": 100,
+  "backfill_hours": 48,
+  "hashtags": [
+    "#test",
+    "#wardriving"
+  ],
+  "private": [],
+  "discovery": true,
+  "guesses": [],
+  "api_token": "",
+  "name_sources": [
+    {
+      "name": "MeshCore channel catalog",
+      "type": "catalog",
+      "url": "https://raw.githubusercontent.com/marcelverdult/meshcore-channels/main/channels-unique.json",
+      "every_hours": 24
+    },
+    {
+      "name": "Porchlight extended names",
+      "type": "list",
+      "url": "https://github.com/mutiny19/porchlight-openhop-plugin/releases/latest/download/porchlight-names.txt.gz",
+      "every_hours": 168
+    }
+  ],
+  "area": "",
+  "light_request": {},
+  "auto_channels": [
+    "#wardriving"
+  ],
+  "local_repeaters": [],
+  "ignore_names": [],
+  "quiet_days": 7,
+  "newest_days": 7,
+  "greet_days": 180,
+  "max_posts_per_hour": 30,
+  "reach_check_url": "",
+  "reach_observer": "",
+  "top_count": 4,
+  "top_hours": 72
+}

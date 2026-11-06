@@ -1,0 +1,75 @@
+# Push a tag like v0.8.0 to publish: builds the wheel from that exact commit and attaches it to a GitHub Release.
+# The tag, pyproject.toml and plugin/openhop-plugin.json must all carry the same version.
+name: Release
+on:
+  push:
+    tags: ["v*"]
+permissions:
+  contents: write
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install pycryptodome pytest build
+      - name: Versions match the tag
+        run: |
+          v="${GITHUB_REF_NAME#v}"
+          python - "$v" <<'PY'
+          import json, sys, tomllib
+          v = sys.argv[1]
+          py = tomllib.load(open("pyproject.toml", "rb"))["project"]["version"]
+          mf = json.load(open("plugin/openhop-plugin.json"))["version"]
+          init = open("porchlight/__init__.py").read()
+          assert py == mf == v and f'"{v}"' in init, f"tag {v}, pyproject {py}, manifest {mf}"
+          PY
+      - run: python -m pytest -q
+      - run: python -m build --wheel
+      # The extended channel-name list every porch downloads (name source "Porchlight extended names").
+      - name: Build the extended name list
+        run: |
+          mkdir -p names-inputs && cd names-inputs
+          curl -fsSL -o hunspell.zip https://github.com/en-wl/wordlist/releases/download/rel-2026.02.25/hunspell-en_US-2026.02.25.zip
+          curl -fsSL -o cities1000.zip https://download.geonames.org/export/dump/cities1000.zip
+          curl -fsSL -o admin1CodesASCII.txt https://download.geonames.org/export/dump/admin1CodesASCII.txt
+          curl -fsSL -o admin2Codes.txt https://download.geonames.org/export/dump/admin2Codes.txt
+          curl -fsSL -o catalog.json https://raw.githubusercontent.com/marcelverdult/meshcore-channels/main/channels-unique.json
+          unzip -q hunspell.zip en_US.dic && unzip -q cities1000.zip
+          cd .. && python tools/build_names.py names-inputs dist/porchlight-names.txt.gz
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          whl=$(ls dist/*.whl)
+          sha=$(sha256sum "$whl" | cut -d' ' -f1)
+          gh release create "$GITHUB_REF_NAME" "$whl" dist/porchlight-names.txt.gz --title "Porchlight $GITHUB_REF_NAME" \
+            --notes "Wheel SHA-256: \`$sha\`  (source commit $GITHUB_SHA)"
+      # The openHop catalogue pins the SHA-256 of the PUBLISHED bytes: download them back, check, and print the entry.
+      - name: Verify the published wheel and print the catalogue entry
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          v="${GITHUB_REF_NAME#v}"
+          name="porchlight_openhop_plugin-$v-py3-none-any.whl"
+          url="https://github.com/$GITHUB_REPOSITORY/releases/download/$GITHUB_REF_NAME/$name"
+          mkdir -p published && gh release download "$GITHUB_REF_NAME" -p "$name" -D published
+          pub=$(sha256sum "published/$name" | cut -d' ' -f1)
+          test "$pub" = "$(sha256sum "dist/$name" | cut -d' ' -f1)"
+          python - "$v" "$url" "$pub" "$GITHUB_SHA" "$GITHUB_REPOSITORY" > catalogue-entry.json <<'PY'
+          import json, sys
+          v, url, sha, rev, repo = sys.argv[1:]
+          print(json.dumps({
+              "id": "porchlight", "name": "Porchlight",
+              "description": "Shows every channel the repeater hears, and answers newcomers in #porchlight with the channels active nearby.",
+              "repository": repo, "category": "integration",
+              "logo": f"https://raw.githubusercontent.com/{repo}/{rev}/plugin/ui/logo.svg",
+              "distribution": "porchlight-openhop-plugin", "source_revision": rev, "version": v,
+              "wheel_url": url, "sha256": sha, "min_repeater_version": "1.1.4",
+              "homepage": f"https://github.com/{repo}", "tags": ["meshcore", "channels", "community"],
+          }, indent=2))
+          PY
+          cat catalogue-entry.json
+          gh release upload "$GITHUB_REF_NAME" catalogue-entry.json

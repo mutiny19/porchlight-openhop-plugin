@@ -1,0 +1,565 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Porchlight</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='18' cy='19' r='11' fill='%23f4b740' opacity='.3'/%3E%3Cpath fill='%23aab3c2' d='M5 4h3v24H5zM8 9h6v2H8zM12 11h12l-2 3H14zM13 24h10v2H13z'/%3E%3Crect x='14' y='14' width='8' height='10' rx='1' fill='%23f4b740' opacity='.55'/%3E%3Ccircle cx='18' cy='19' r='2.6' fill='%23fff3c4'/%3E%3C/svg%3E">
+<style>
+:root {
+  --bg: #18202c; --panel: #212b3a; --panel-2: #283346; --line: #34405495;
+  --ink: #e8ecf2; --ink-2: #aab3c2; --ink-3: #7d8796;
+  --lamp: #f4b740; --lamp-glow: #f4b74066;
+  --public: #8fb89a; --hashtag: #8fb89a; --private: #7fb0d9; --discovered: #b7a3d9; --unknown: #7d8796;
+  --bar: #4a5870; --bar-hot: #f4b740; --danger: #ef8a7a;
+  --radius-lg: 14px; --radius-sm: 7px;
+  color-scheme: dark;
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --bg: #e9eef5; --panel: #f7f9fc; --panel-2: #eef2f8; --line: #c9d2df;
+    --ink: #1b2330; --ink-2: #4a5566; --ink-3: #6b7686;
+    --lamp: #b77905; --lamp-glow: #e0a52a55;
+    --public: #3f7d52; --hashtag: #3f7d52; --private: #2f6c9c; --discovered: #6d52a3; --unknown: #6b7686;
+    --bar: #b9c4d4; --bar-hot: #c98a10; --danger: #b23b2a;
+    color-scheme: light;
+  }
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body {
+  background: var(--bg); color: var(--ink);
+  font: 15px/1.5 "Atkinson Hyperlegible", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;  /* no web fonts: the page works on an off-grid repeater */
+  font-variant-numeric: tabular-nums;
+}
+button, input, textarea { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--lamp); outline-offset: 2px; }
+
+.app { display: grid; grid-template-rows: auto 1fr; height: 100vh; height: 100dvh; }
+header {
+  display: flex; align-items: center; gap: 16px; padding: 14px 20px;
+  border-bottom: 1px solid var(--line);
+}
+header h1 { font-size: 20px; margin: 0; font-weight: 700; letter-spacing: -0.01em; }
+header h1.brand { display: flex; align-items: center; gap: 8px; }
+.logo { width: 28px; height: 28px; flex: none; }
+.logo .halo { fill: var(--lamp-glow); }
+.logo .metal { fill: var(--ink-2); }
+.logo .glass { fill: var(--lamp); opacity: .55; }
+.logo .bulb { fill: #fff3c4; }
+header .status { color: var(--ink-3); font-size: 13px; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+header .status.bad { color: var(--danger); }
+.btn {
+  background: var(--panel-2); border: 1px solid var(--line); border-radius: var(--radius-sm);
+  padding: 7px 12px; cursor: pointer; white-space: nowrap;
+}
+.btn:hover { border-color: var(--ink-3); }
+.btn.primary { background: var(--lamp); color: #1d1606; border-color: transparent; font-weight: 700; }
+
+main { display: grid; grid-template-columns: minmax(280px, 360px) 1fr; min-height: 0; }
+.rail { border-right: 1px solid var(--line); overflow-y: auto; padding: 8px; }
+.chan {
+  display: grid; grid-template-columns: 22px 1fr auto; gap: 4px 10px; align-items: center;
+  width: 100%; text-align: left; background: none; border: 1px solid transparent;
+  border-radius: var(--radius-lg); padding: 10px 12px; cursor: pointer;
+}
+.chan:hover { background: var(--panel); }
+.chan[aria-current="true"] { background: var(--panel); border-color: var(--line); }
+.lamp {
+  width: 12px; height: 12px; border-radius: 50%; justify-self: center;
+  background: var(--lamp); opacity: var(--lit, 0.15);
+  box-shadow: 0 0 calc(var(--lit, 0) * 14px) calc(var(--lit, 0) * 3px) var(--lamp-glow);
+}
+.chan .name { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chan .count { color: var(--ink-2); font-size: 13px; }
+.chan .sub { grid-column: 2 / 4; display: flex; align-items: end; justify-content: space-between; gap: 10px; }
+.kind { font-size: 12px; color: var(--k); }
+.spark { display: flex; align-items: end; gap: 1px; height: 18px; }
+.spark i { width: 3px; background: var(--bar); border-radius: 1px; min-height: 1px; }
+.spark i.hot { background: var(--bar-hot); }
+.rail h2 { font-size: 13px; color: var(--ink-3); font-weight: 400; margin: 16px 12px 6px; }
+
+.pane { display: flex; flex-direction: column; min-height: 0; }
+.pane-head { padding: 18px 24px 14px; border-bottom: 1px solid var(--line); }
+.pane-head h2 { margin: 0; font-size: 26px; line-height: 1.2; letter-spacing: -0.01em; word-break: break-word; }
+.pane-head .facts { display: flex; flex-wrap: wrap; gap: 6px 20px; margin-top: 8px; color: var(--ink-2); font-size: 13px; }
+.pane-head .facts b { color: var(--ink); font-weight: 700; }
+.back { display: none; margin-bottom: 10px; }
+.msgs { overflow-y: auto; padding: 8px 24px 32px; }
+.msg { padding: 12px 0; border-bottom: 1px solid var(--line); max-width: 72ch; }
+.msg .who { font-weight: 700; margin-right: 6px; }
+.msg .text { overflow-wrap: anywhere; }
+.msg .meta { color: var(--ink-3); font-size: 12.5px; margin-top: 3px; display: flex; flex-wrap: wrap; gap: 2px 14px; }
+.msg.enc .text { color: var(--ink-2); font-style: italic; }
+.empty { color: var(--ink-2); padding: 40px 24px; max-width: 52ch; }
+.empty a:not(.btn) { color: var(--lamp); }
+.empty .btn { display: inline-block; margin-top: 8px; text-decoration: none; }
+
+dialog {
+  background: var(--panel); color: var(--ink); border: 1px solid var(--line); border-radius: var(--radius-lg);
+  width: min(560px, calc(100vw - 32px)); padding: 0;
+}
+dialog::backdrop { background: #0008; }
+dialog form { padding: 22px 24px; display: grid; gap: 18px; }
+dialog h3 { margin: 0; font-size: 20px; }
+dialog p.hint { margin: 4px 0 0; color: var(--ink-3); font-size: 13px; }
+label.field { display: grid; gap: 6px; font-weight: 700; font-size: 14px; }
+label.field input, label.field textarea {
+  background: var(--bg); border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 8px 10px; font-weight: 400;
+}
+label.check { display: flex; gap: 10px; align-items: start; }
+label.check input { margin-top: 4px; accent-color: var(--lamp); }
+.row-end { display: flex; justify-content: end; gap: 10px; align-items: center; }
+.row-end .note { flex: 1; color: var(--ink-3); font-size: 13px; }
+.row-end .note.bad { color: var(--danger); }
+.btn.lit { border-color: var(--lamp); color: var(--lamp); }
+.steps { margin: 0; padding: 0; list-style: none; display: grid; gap: 4px; font-size: 13.5px; color: var(--ink-2); }
+.steps li::before { content: "✓ "; color: var(--public); }
+.steps li.bad { color: var(--danger); }
+.steps li.bad::before { content: "✗ "; color: var(--danger); }
+.porch-state { font-weight: 700; }
+.porch-state.dark { color: var(--danger); }
+.srcs { display: grid; gap: 6px; }
+.src { display: flex; gap: 8px; align-items: center; font-size: 13.5px; }
+.src span { flex: 1; min-width: 0; overflow-wrap: anywhere; color: var(--ink-2); }
+.src span b { color: var(--ink); }
+.add-src { display: flex; gap: 8px; }
+.add-src input { flex: 1; min-width: 0; background: var(--bg); border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 7px 10px; }
+
+@media (max-width: 760px) {
+  header { padding: 12px 16px; }
+  main { grid-template-columns: 1fr; }
+  .rail { border-right: 0; }
+  main.showing .rail { display: none; }
+  main:not(.showing) .pane { display: none; }
+  .back { display: inline-block; }
+  .pane-head, .msgs { padding-left: 16px; padding-right: 16px; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .lamp { transition: opacity .6s, box-shadow .6s; }
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <h1 class="brand"><svg class="logo" viewBox="0 0 32 32" aria-hidden="true"><circle class="halo" cx="18" cy="19" r="11"/><path class="metal" d="M5 4h3v24H5zM8 9h6v2H8z"/><path class="metal" d="M12 11h12l-2 3H14z"/><rect class="glass" x="14" y="14" width="8" height="10" rx="1"/><circle class="bulb" cx="18" cy="19" r="2.6"/><path class="metal" d="M13 24h10v2H13z"/></svg><span>Porchlight</span></h1>
+    <div class="status" id="status" role="status">Connecting…</div>
+    <button class="btn primary" id="open-porch" type="button">Light the porch</button>
+    <button class="btn" id="open-settings" type="button">Channels and keys</button>
+  </header>
+  <main id="main">
+    <nav class="rail" id="rail" aria-label="Channels"></nav>
+    <section class="pane" id="pane" aria-live="polite"></section>
+  </main>
+</div>
+
+<dialog id="porch">
+  <form method="dialog" id="porch-form">
+    <div>
+      <h3>The porch</h3>
+      <p class="hint">When the porch is lit, Porchlight answers people who knock in #porchlight (they send <b>porchlight</b>)
+        with the channels heard here, and announces channels that are new here. It speaks only in #porchlight, as
+        "Porchlight", through its own companion on this repeater.</p>
+    </div>
+    <p class="porch-state" id="porch-state"></p>
+    <ul class="steps" id="porch-steps"></ul>
+    <label class="field">openHop API token (optional)
+      <input id="p-token" type="password" autocomplete="new-password" spellcheck="false" placeholder="Leave empty: Porchlight creates its own">
+      <p class="hint">Lets Porchlight read the packet log and run its companion. Leave it empty and Porchlight creates a
+        token named "porchlight" with your dashboard sign-in; Remove revokes it again.</p>
+    </label>
+    <label class="field">Area name
+      <input id="p-area" spellcheck="false" placeholder="Looked up from the repeater's location">
+      <p class="hint">Said in every answer, like "Channels active near Springfield, IL". Leave empty to use the looked-up name.</p>
+    </label>
+    <div class="row-end">
+      <span class="note" id="porch-note"></span>
+      <button class="btn" value="cancel" type="submit" formnovalidate>Close</button>
+      <button class="btn" id="porch-remove" type="button" title="Turn off and delete Porchlight's companion from openHop (do this before uninstalling)">Remove</button>
+      <button class="btn" id="porch-off" type="button">Turn off</button>
+      <button class="btn primary" id="porch-light" type="button">Light the porch</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="settings">
+  <form method="dialog" id="settings-form">
+    <div>
+      <h3>Channels and keys</h3>
+      <p class="hint">Messages are decoded from the repeater's packet log. Changes apply within a few seconds.</p>
+    </div>
+    <label class="field">Hashtag channels to decode
+      <textarea id="f-hashtags" rows="3" spellcheck="false" placeholder="#openhouse, #wardriving"></textarea>
+    </label>
+    <label class="field">Private channels, one per line as name then key
+      <textarea id="f-private" rows="3" spellcheck="false" placeholder="Family 00112233445566778899aabbccddeeff"></textarea>
+    </label>
+    <label class="check"><input type="checkbox" id="f-discovery">
+      <span>Discover hashtag channels
+        <p class="hint">Tries likely names, plus any #tag seen in chat, against channels without a key.</p></span>
+    </label>
+    <div class="field"><span>Name sources</span>
+      <p class="hint">Lists of hashtag channel names, fetched daily and tried against channels without a key. Add your
+        local CoreScope (its address), a channel catalog (a .json link) or a plain list of names (.txt or .txt.gz).</p>
+      <div class="srcs" id="f-sources"></div>
+      <div class="add-src"><input id="f-src-url" spellcheck="false" placeholder="https://corescope.example.org, or a .json, .txt or .txt.gz list"><button class="btn" id="f-src-add" type="button">Add source</button></div>
+    </div>
+    <label class="field">Extra names to try
+      <textarea id="f-guesses" rows="2" spellcheck="false" placeholder="#mytown, #mytown-wx"></textarea>
+    </label>
+    <label class="field">openHop API token
+      <input id="f-token" type="password" autocomplete="new-password" spellcheck="false" placeholder="Empty: press Connect on the main page">
+      <p class="hint">Lets the plugin read the repeater's packet log. Sent as X-API-Key to this repeater only.</p>
+    </label>
+    <div class="row-end">
+      <span class="note" id="settings-note"></span>
+      <button class="btn" value="cancel" type="submit" formnovalidate>Cancel</button>
+      <button class="btn primary" id="save" type="button">Save channels</button>
+    </div>
+  </form>
+</dialog>
+
+<script>
+(() => {
+  // The plugin id comes from the page address (/plugins/<id>/ui/...), so the UI works whatever id it is installed under.
+  const PLUGIN = (location.pathname.match(/\/plugins\/([^/]+)\//) || [])[1] || "porchlight";
+  const KIND = {
+    public: ["Public channel", "--public"], hashtag: ["Hashtag channel", "--hashtag"],
+    private: ["Private channel", "--private"], discovered: ["Discovered", "--discovered"],
+    unknown: ["No key", "--unknown"],
+  };
+  const $ = (id) => document.getElementById(id);
+  const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+  const store = {
+    get(k) { try { return localStorage.getItem(k); } catch { return null; } },
+    set(k, v) { try { localStorage.setItem(k, v); } catch {} },
+  };
+  let data = null, selected = store.get("pl-selected"), cfg = null, lastRendered = "";
+
+  // Same storage keys as the openHop dashboard, so signing in on either page signs in both.
+  const TOKEN_KEY = "pymc_jwt_token", CLIENT_KEY = "pymc_client_id";
+  const signinError = () => Object.assign(new Error("signin"), { signin: true });
+  function clientId() {
+    let id = store.get(CLIENT_KEY);
+    if (!id) { id = `${Date.now()}-${Math.random().toString(36).slice(2, 15)}`; store.set(CLIENT_KEY, id); }
+    return id;
+  }
+  function tokenExpiry(token) {
+    try { return JSON.parse(atob(token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/"))).exp || 0; } catch { return 0; }
+  }
+  const validToken = () => { const t = store.get(TOKEN_KEY); return t && tokenExpiry(t) > Date.now() / 1000 + 5 ? t : null; };
+  let renewing = null;
+  // Tokens last 15 minutes and can't be renewed once expired, so renew with a few minutes to spare.
+  async function renewSoon() {
+    const t = validToken();
+    if (!t || tokenExpiry(t) - Date.now() / 1000 > 300 || renewing) return;
+    renewing = (async () => {
+      try {
+        const r = await fetch("/auth/refresh", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${t}` }, body: JSON.stringify({ client_id: clientId() }) });
+        const b = await r.json();
+        const next = b.token || (b.data && b.data.token);
+        if (r.ok && next) store.set(TOKEN_KEY, next);
+      } catch {} finally { renewing = null; }
+    })();
+    await renewing;
+  }
+
+  async function api(path, opts = {}) {
+    await renewSoon();
+    const token = validToken();
+    if (!token) throw signinError();
+    const r = await fetch(path, { ...opts, headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}`, ...(opts.headers || {}) } });
+    if (r.status === 401 || r.status === 403) throw signinError();
+    const body = await r.json();
+    if (body && body.success === false) throw new Error(body.error || "request failed");
+    return body && "data" in body ? body.data : body;
+  }
+
+  function ago(t) {
+    if (!t) return "never";
+    const s = Math.max(0, Date.now() / 1000 - t);
+    if (s < 60) return "just now";
+    if (s < 3600) return `${Math.floor(s / 60)} min ago`;
+    if (s < 86400) return `${Math.floor(s / 3600)} h ago`;
+    return `${Math.floor(s / 86400)} d ago`;
+  }
+  const clock = (t) => new Date(t * 1000).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  const day = (t) => new Date(t * 1000).toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" });
+  // Porch light: full glow within the hour, fading to dark after a day.
+  const lit = (t) => { if (!t) return 0; const h = (Date.now() / 1000 - t) / 3600; return h <= 1 ? 1 : Math.max(0, 1 - Math.log(h) / Math.log(24)); };
+  const title = (c) => c.kind === "unknown" ? `Unknown channel ${c.name}` : c.name;
+
+  function renderRail() {
+    const rail = $("rail"); rail.replaceChildren();
+    const groups = [["Decoded", data.channels.filter((c) => c.kind !== "unknown")], ["No key yet", data.channels.filter((c) => c.kind === "unknown")]];
+    for (const [label, list] of groups) {
+      if (!list.length) continue;
+      rail.append(el("h2", null, label));
+      for (const c of list) {
+        const b = el("button", "chan"); b.type = "button";
+        b.setAttribute("aria-current", String(c.key === selected));
+        const lamp = el("span", "lamp"); lamp.style.setProperty("--lit", Math.max(0.15, lit(c.last)).toFixed(2));
+        lamp.title = `Last heard ${ago(c.last)}`;
+        const [kname, kvar] = KIND[c.kind] || KIND.unknown;
+        const kind = el("span", "kind", c.kind === "discovered" ? `Discovered ${ago(c.found_at)}` : kname); kind.style.setProperty("--k", `var(${kvar})`);
+        const spark = el("span", "spark"); spark.setAttribute("aria-hidden", "true");
+        const max = Math.max(1, ...c.hourly);
+        c.hourly.forEach((n, i) => { const bar = el("i", n && i === 23 ? "hot" : ""); bar.style.height = `${n ? Math.max(3, (n / max) * 18) : 1}px`; spark.append(bar); });
+        const sub = el("span", "sub"); sub.append(kind, spark);
+        b.append(lamp, el("span", "name", title(c)), el("span", "count", `${c.count24} today`), sub);
+        b.setAttribute("aria-label", `${title(c)}, ${c.count24} messages in 24 hours, last heard ${ago(c.last)}`);
+        b.onclick = () => { selected = c.key; store.set("pl-selected", selected); $("main").classList.add("showing"); lastRendered = ""; render(); $("pane").querySelector("h2")?.focus(); };
+        rail.append(b);
+      }
+    }
+  }
+
+  function renderPane() {
+    const pane = $("pane"); pane.replaceChildren();
+    const c = data.channels.find((x) => x.key === selected);
+    if (!c) {
+      pane.append(el("div", "empty", data.channels.length ? "Pick a channel to read its last messages." : "No channel messages in the repeater's log yet. They show up here as soon as one is heard."));
+      return;
+    }
+    const head = el("div", "pane-head");
+    const back = el("button", "btn back", "All channels"); back.type = "button";
+    back.onclick = () => { $("main").classList.remove("showing"); };
+    const h = el("h2", null, title(c)); h.tabIndex = -1;
+    const facts = el("div", "facts");
+    const fact = (label, value) => { const s = el("span"); s.append(`${label} `, el("b", null, value)); facts.append(s); };
+    fact("Last heard", ago(c.last));
+    fact("Today", `${c.count24} msgs`);
+    if (c.kind !== "unknown") fact("People today", String(c.senders24));
+    if (c.snr24 != null) fact("Avg SNR", `${c.snr24} dB`);
+    if (c.hops24 != null) fact("Avg hops", String(c.hops24));
+    fact("Since", c.first ? day(c.first) : "never");
+    head.append(back, h, facts);
+    const list = el("div", "msgs");
+    if (c.kind === "unknown") list.append(el("p", "empty", "The repeater hears this channel but has no key for it, so only signal and timing are shown. Add its key or name under Channels and keys to decode past and future messages."));
+    for (const m of c.msgs) {
+      const row = el("article", "msg" + (c.kind === "unknown" ? " enc" : ""));
+      const p = el("div", "text");
+      if (c.kind === "unknown") p.textContent = `Encrypted message, ${m.len} bytes`;
+      else { if (m.sender) p.append(el("span", "who", m.sender)); p.append(m.text); }
+      const meta = el("div", "meta");
+      meta.append(el("span", null, `${day(m.t)} ${clock(m.t)}`));
+      if (m.hops != null) meta.append(el("span", null, m.hops === 0 ? "direct" : `${m.hops} hop${m.hops === 1 ? "" : "s"}${pathText(m.path)}`));
+      if (m.snr != null) meta.append(el("span", null, `SNR ${m.snr} dB, RSSI ${m.rssi} dBm`));
+      if (m.heard > 1) meta.append(el("span", null, `heard ${m.heard} times`));
+      row.append(p, meta); list.append(row);
+    }
+    pane.append(head, list);
+  }
+  function pathText(p) { try { const a = JSON.parse(p || "[]"); return a.length ? ` via ${a.join(" > ")}` : ""; } catch { return ""; } }
+
+  function render() {
+    const key = JSON.stringify([data.updated, selected, Math.floor(Date.now() / 60000)]);
+    if (key === lastRendered) return;
+    lastRendered = key;
+    const scroll = $("pane").querySelector(".msgs")?.scrollTop || 0;
+    renderRail(); renderPane();
+    const list = $("pane").querySelector(".msgs"); if (list) list.scrollTop = scroll;
+  }
+
+  function setStatus(text, bad) { const s = $("status"); s.textContent = text; s.classList.toggle("bad", !!bad); }
+
+  async function refresh() {
+    try {
+      const r = await api(`/api/plugins/runtime?id=${encodeURIComponent(PLUGIN)}`);
+      const rt = r.runtime || r;
+      if (!rt.channels) { setStatus("Waiting for the first scan of the packet log…"); return; }
+      data = rt;
+      if (needsConnect(rt)) { renderPorch(); if (!$("pane").querySelector(".empty button")) showConnect(rt); lastRendered = ""; return; }
+      if (!selected && data.channels.length) selected = data.channels[0].key;
+      const decoded = data.channels.filter((c) => c.kind !== "unknown").length;
+      const ok = !data.status || data.status === "ok";
+      setStatus(ok ? `${data.channels.length} channels heard, ${decoded} decoded. Updated ${ago(data.updated)}.` : `Backend: ${data.status}`, !ok);
+      renderPorch();
+      render();
+    } catch (e) {
+      if (e.signin) showSignedOut();
+      else setStatus(`Can't reach openHop: ${e.message}`, true);
+    }
+  }
+
+  // Like the official plugins: the openHop dashboard owns sign-in; this page only uses its session.
+  function showSignedOut() {
+    const expired = !!store.get(TOKEN_KEY);
+    setStatus(expired ? "Session expired" : "Not signed in", true);
+    $("rail").replaceChildren();
+    const pane = $("pane"); pane.replaceChildren();
+    const box = el("div", "empty");
+    box.append(el("p", null, expired
+      ? "Your openHop dashboard session has expired. Sign in on the dashboard again, then reload this page."
+      : "Open Porchlight from the openHop dashboard after signing in there."));
+    const go = Object.assign(el("a", "btn primary", "Open openHop dashboard"), { href: "/" });
+    box.append(go);
+    pane.append(box); $("main").classList.add("showing");
+  }
+
+  // ---- connect: Porchlight's own openHop API token ----
+  // The backend needs an API token to read the packet log. Rather than have the owner create and paste one, the page
+  // creates it with the dashboard sign-in it already has (POST /api/auth/tokens) and saves it in the plugin settings.
+  const TOKEN_NAME = "porchlight";
+  const needsConnect = (rt) => /^no openHop API token|check the API token/.test((rt && rt.status) || "");
+  async function readSettings() { const r = await api(`/api/plugins/settings?id=${encodeURIComponent(PLUGIN)}`); return r.config || r; }
+  async function saveSettings(next) {
+    await api("/api/plugins/settings", { method: "POST", body: JSON.stringify({ id: PLUGIN, config: next, restart: false }) });
+    cfg = next; return next;
+  }
+  async function revokeOwnToken(cur) {
+    if (cur.api_token_id == null) return;
+    try { await api(`/api/auth/tokens/${encodeURIComponent(cur.api_token_id)}`, { method: "DELETE" }); } catch (e) { if (e.signin) throw e; }
+  }
+  async function connect(cur) {
+    cur = cur || await readSettings();
+    await revokeOwnToken(cur);  // reconnecting replaces the old one instead of piling up tokens
+    const made = await api("/api/auth/tokens", { method: "POST", body: JSON.stringify({ name: TOKEN_NAME }) });
+    if (!made.token) throw new Error("openHop didn't return a token");
+    return saveSettings({ ...cur, api_token: made.token, api_token_id: made.token_id });
+  }
+  function showConnect(rt) {
+    const bad = /check the API token/.test(rt.status || "");
+    setStatus(bad ? "openHop refused Porchlight's API token" : "Not connected to this repeater yet", bad);
+    $("rail").replaceChildren();
+    const pane = $("pane"); pane.replaceChildren();
+    const box = el("div", "empty");
+    box.append(el("p", null, bad
+      ? "openHop no longer accepts the API token Porchlight has (it may have been revoked). Connect again to make a new one."
+      : "Porchlight reads this repeater's packet log through openHop's API. Connect creates an API token named \"porchlight\" for it, using your dashboard sign-in."));
+    const go = el("button", "btn primary", bad ? "Connect again" : "Connect"); go.type = "button";
+    const note = el("p", "hint");
+    go.onclick = async () => {
+      go.disabled = true; note.textContent = "Connecting…";
+      try { await connect(); note.textContent = "Connected. Channels show up after the first scan, in a few seconds."; }
+      catch (e) { if (e.signin) { showSignedOut(); return; } note.textContent = `Didn't work: ${e.message}`; go.disabled = false; }
+    };
+    box.append(go, note);
+    pane.append(box); $("main").classList.add("showing");
+  }
+
+  // ---- settings ----
+  const splitTags = (s) => s.split(/[\s,]+/).map((x) => x.trim()).filter(Boolean).map((x) => "#" + x.replace(/^#+/, "").toLowerCase());
+  $("open-settings").onclick = async () => {
+    if (!validToken()) { showSignedOut(); return; }
+    $("settings-note").textContent = ""; $("settings-note").classList.remove("bad");
+    try {
+      const r = await api(`/api/plugins/settings?id=${encodeURIComponent(PLUGIN)}`);
+      cfg = r.config || r;
+      $("f-hashtags").value = (cfg.hashtags || []).join(", ");
+      $("f-private").value = (cfg.private || []).map((p) => `${p.name} ${p.secret}`).join("\n");
+      $("f-discovery").checked = cfg.discovery !== false;
+      $("f-guesses").value = (cfg.guesses || []).join(", ");
+      srcList = [...(cfg.name_sources || [])]; renderSources();
+      $("f-token").value = cfg.api_token || "";
+      $("settings").showModal();
+    } catch (e) { setStatus(e.signin ? "Not signed in" : `Can't load settings: ${e.message}`, true); }
+  };
+  $("save").onclick = async () => {
+    const note = $("settings-note"); note.classList.remove("bad");
+    const priv = [];
+    for (const line of $("f-private").value.split("\n").map((l) => l.trim()).filter(Boolean)) {
+      const m = line.match(/^(.+?)\s+([0-9a-fA-F]{32})$/);
+      if (!m) { note.textContent = `Needs a name then a 32-character hex key: ${line}`; note.classList.add("bad"); return; }
+      priv.push({ name: m[1], secret: m[2].toLowerCase() });
+    }
+    const next = { ...cfg, hashtags: [...new Set(splitTags($("f-hashtags").value))], private: priv,
+      discovery: $("f-discovery").checked, guesses: [...new Set(splitTags($("f-guesses").value))], name_sources: srcList,
+      api_token: $("f-token").value.trim().replace(/^Bearer\s+/i, "") };
+    try {
+      await api("/api/plugins/settings", { method: "POST", body: JSON.stringify({ id: PLUGIN, config: next, restart: false }) });
+      cfg = next; note.textContent = "Saved"; setTimeout(() => $("settings").close(), 500);
+    } catch (e) { note.textContent = `Not saved: ${e.message}`; note.classList.add("bad"); }
+  };
+
+  // ---- name sources ("add source") ----
+  let srcList = [];
+  function renderSources() {
+    const box = $("f-sources"); box.replaceChildren();
+    const seen = new Map(((data && data.sources) || []).map((s) => [s.url, s]));
+    if (!srcList.length) box.append(el("span", "hint", "None yet."));
+    srcList.forEach((src, i) => {
+      const s = seen.get(src.url) || {};
+      const row = el("div", "src"), info = el("span");
+      info.append(el("b", null, src.name || src.url), ` · ${src.type} · ${s.error ? "failed (" + s.error + ")" : s.count != null ? s.count + " names" + (s.fetched_at ? ", " + ago(s.fetched_at) : "") : "not fetched yet"}`);
+      const rm = el("button", "btn", "Remove"); rm.type = "button";
+      rm.onclick = () => { srcList.splice(i, 1); renderSources(); };
+      row.append(info, rm); box.append(row);
+    });
+  }
+  $("f-src-add").onclick = () => {
+    let url = $("f-src-url").value.trim();
+    if (!url) return;
+    if (!/^https?:\/\//i.test(url)) url = "https://" + url;
+    let host; try { host = new URL(url).host; } catch { $("settings-note").textContent = "That isn't a web address"; return; }
+    const type = /\.json(\?|$)/i.test(url) ? "catalog" : /\.(txt|gz)(\?|$)/i.test(url) ? "list" : "corescope";
+    if (type === "corescope") url = url.replace(/\/+$/, "");
+    if (!srcList.some((s) => s.url === url)) srcList.push({ name: host, type, url, every_hours: 24 });
+    $("f-src-url").value = ""; renderSources();
+  };
+
+  // ---- the porch ----
+  function renderPorch() {
+    const p = (data && data.porch) || {};
+    const b = $("open-porch");
+    b.textContent = p.lit ? `Porch lit${p.area ? " · " + p.area : ""}` : "Light the porch";
+    b.className = "btn " + (p.lit ? "lit" : "primary");
+    if (!$("porch").open) return;
+    const st = $("porch-state");
+    st.textContent = p.lit ? `Lit near ${p.area}${p.lit_at ? ", since " + ago(p.lit_at) : ""}` : `Dark: ${p.reason || "not lit yet"}`;
+    st.className = "porch-state" + (p.lit ? "" : " dark");
+    $("porch-steps").replaceChildren(...(p.steps || []).map((x) => el("li", x.ok ? "" : "bad", x.text)));
+    $("p-area").placeholder = p.auto_area ? `Looked up: ${p.auto_area}` : "Looked up from the repeater's location";
+  }
+  async function porchRequest(action) {
+    const note = $("porch-note"); note.classList.remove("bad"); note.textContent = "";
+    try {
+      let cur = await readSettings();
+      const typed = $("p-token").value.trim().replace(/^Bearer\s+/i, "");
+      if (typed && typed !== cur.api_token) cur = { ...cur, api_token: typed, api_token_id: null };  // owner pasted their own
+      if (action === "light" && !cur.api_token) { note.textContent = "Connecting to openHop…"; cur = await connect(cur); }
+      const id = String(Date.now());
+      await saveSettings({ ...cur, area: $("p-area").value.trim(), light_request: { id, action } });
+      note.textContent = { light: "Lighting… this takes a few seconds", off: "Turning off…", remove: "Removing the companion…" }[action];
+      if (action === "remove") await finishRemove(id, note);
+    } catch (e) {
+      if (e.signin) { $("porch").close(); showSignedOut(); return; }
+      note.textContent = `Didn't work: ${e.message}`; note.classList.add("bad");
+    }
+  }
+  // After the backend has deleted its companion (it needs the token for that), revoke the token the page made.
+  async function finishRemove(id, note) {
+    for (let i = 0; i < 30; i++) {
+      await new Promise((ok) => setTimeout(ok, 1000));
+      const r = await api(`/api/plugins/runtime?id=${encodeURIComponent(PLUGIN)}`);
+      const p = ((r.runtime || r).porch) || {};
+      if (p.done_request === id) break;
+    }
+    const cur = await readSettings();
+    if (cur.api_token_id != null) {
+      await revokeOwnToken(cur);
+      await saveSettings({ ...cur, api_token: "", api_token_id: null });
+    }
+    $("p-token").value = "";
+    note.textContent = "Removed. Porchlight can now be uninstalled from the Plugins page.";
+  }
+  $("open-porch").onclick = async () => {
+    if (!validToken()) { showSignedOut(); return; }
+    try {
+      const cur = await readSettings();
+      $("p-token").value = cur.api_token_id == null ? (cur.api_token || "") : ""; $("p-area").value = cur.area || "";
+      $("porch-note").textContent = "";
+      $("porch").showModal(); renderPorch();
+    } catch (e) { setStatus(e.signin ? "Not signed in" : `Can't load settings: ${e.message}`, true); }
+  };
+  $("porch-light").onclick = () => porchRequest("light");
+  $("porch-off").onclick = () => porchRequest("off");
+  $("porch-remove").onclick = () => porchRequest("remove");
+
+  refresh();
+  setInterval(refresh, 5000);
+})();
+</script>
+</body>
+</html>

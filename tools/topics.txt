@@ -1,0 +1,69 @@
+// Channel topics people name hashtag channels after, beyond places and plain words. Comma-separated; an entry with
+// spaces also produces its joined and hyphenated forms ("field day" -> fieldday, field-day), and every entry gets a
+// plural ("nets", "scanners"). Add freely: tools/build_names.py puts these near the top of the extended name list.
+
+// general chat
+general, random, offtopic, off topic, lounge, chat, chatter, talk, banter, lobby, hangout, social, hello, hi, welcome
+newbie, new users, beginners, help, support, questions, q and a, faq, announcements, announce, news, info, updates
+local, locals, neighbors, neighbours, community, town hall, meetup, events, event, party, status
+test, test1, test2, testing, tst, ping, pong, echo, echo test, bot, robot, relay
+public, private, secret, family, friends, crew, squad, team, club, group
+
+// mesh and LoRa
+mesh, meshcore, meshtastic, reticulum, lora, loranet, lorawan, meshnet, mesh net, mesh chat, mesh test, mesh bot
+repeater, room server, roomserver, room, observer, companion, node, sensor
+infra, infrastructure, backbone, links, routing, route, path, hops, coverage, range, range test
+wardriving, wardrive, war driving, mapping, mapper, meshmapper, map, signal, rssi, snr
+firmware, flasher, flashing, builds, dev, developers, debug, lab, iot lab, sandbox, playground
+rak, rak4631, heltec, t1000, t-beam, tbeam, t-deck, tdeck, xiao, seeed, lilygo, wio, sensecap, esp32, nrf52
+mqtt, bridge, gateway, uplink, internet, ota
+
+// amateur radio
+ham, hamradio, ham radio, amateur, amateur radio, arrl, rsgb, darc, radio club, radioclub
+qso, qsl, qrp, qrv, qth, cq, cqcq, dx, dxer, dxcc, dxpedition, contest, contesting, field day
+pota, sota, iota, wwff, parks on the air, summits on the air
+aprs, aprs-is, igate, digipeater, digi, packet, packet radio, winlink, pat, vara, ardop, js8, js8call, ft8, ft4, wspr
+psk31, rtty, cw, morse, straight key
+dmr, dstar, d-star, ysf, fusion, c4fm, p25, nxdn, m17, allstar, allstarlink, echolink, irlp, brandmeister, tgif
+hf, vhf, uhf, shf, 2m, 70cm, 6m, 10m, 20m, 40m, 80m, 160m, 23cm, 220
+elmer, new ham, newham, license, licensing, exam, ve, vec, technician, general class, extra class
+net, checkin, check in, roll call, rollcall, traffic net, nts, net control, ncs
+swap, swapmeet, swap meet, hamfest, tailgate, flea market, for sale, forsale, wanted, trade
+antenna, tower, coax, sdr, rtlsdr, rtl-sdr, websdr, kiwisdr, hackrf
+satellite, sats, amsat, iss, space, spacewx, space weather, propagation, solar, sunspots, aurora
+
+// other radio services
+gmrs, frs, murs, cb, cbradio, cb radio, 11m, 27mhz, pmr, pmr446, freenet, marine, marine vhf, aviation, airband
+scanner, scanning, rail, railfan, adsb, ads-b, acars, ais, noaa, weather radio, nwr
+
+// emergency and public safety
+emcomm, emergency, ares, races, auxcomm, cert, skywarn, spotter, storm spotter
+sar, search and rescue, rescue, fire, firefighter, ems, medic, ambulance, police, sheriff, dispatch, 911, 112
+red cross, redcross, salvation army, disaster, relief, response, responder, first responder
+shelter, evac, evacuation, hospital, ics, comms, commo, communications
+outage, power, power outage, blackout, grid, grid down, griddown, shtf
+prepper, prepping, prep, survival, survivalist, bugout, bug out, off grid, offgrid, homestead, homesteading
+alert, warning, advisory, watch, weather, wx, severe, severe weather, tornado, hurricane, flood
+snow, ice, winter storm, wildfire, earthquake, quake, tsunami, heat
+
+// tech and hobbies
+tech, iot, diy, maker, makerspace, hackerspace, hacker, hacking, infosec, security, cybersecurity, privacy
+linux, unix, opensource, open source, foss, raspberrypi, raspberry pi, arduino, esp, homeassistant, home assistant
+homelab, 3d printing, 3dprinting, 3dprint, printer, cnc, electronics, solder, soldering, robotics, drone, fpv, rc
+defcon, 2600, bsides, ctf, crypto, bitcoin, cryptocurrency, ai
+gaming, game, gamer, minecraft, chess, poker, trivia, puzzle, dnd, tabletop, esports
+music, movie, tv, book, reading, art, photography, photo, astronomy, stargazing, birding, bird, wildlife, nature
+food, cooking, bbq, coffee, beer, wine, pet, dog, cat, horse, farm, farming, farmer, garden, gardening
+hiking, camping, backpacking, outdoors, overlanding, offroad, off road, 4x4, jeep, atv, utv, trail
+cycling, bike, bicycle, mtb, running, runner, skiing, snowboarding, climbing, kayak, kayaking, boating, sailing
+fishing, hunting, rv, rver, vanlife, van life, trucking, trucker, truckstop, roadtrip, road trip, travel, traveler
+commute, traffic, road, airsoft, paintball, shooting
+
+// places that aren't towns
+downtown, uptown, north, south, east, west, northside, southside, eastside, westside, midtown, suburbs
+county, state, region, campus, university, college, school, church, library, park, lake, river, beach, mountain
+airport, station, harbor, port, marina, mall, stadium, fairgrounds, fair, festival, convention
+
+// work and community
+work, job, business, market, marketplace, buy sell, classifieds, lostfound, lost and found, lost pets
+neighborhood watch, hoa, volunteer, nonprofit, farmers market

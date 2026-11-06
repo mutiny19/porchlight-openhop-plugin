@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Porchlight">
+  <title>Porchlight</title>
+  <rect width="64" height="64" rx="14" fill="#18202c"/>
+  <circle cx="36" cy="38" r="22" fill="#f4b740" opacity=".22"/>
+  <circle cx="36" cy="38" r="13" fill="#f4b740" opacity=".18"/>
+  <g fill="#aab3c2">
+    <path d="M10 8h6v48h-6z"/>
+    <path d="M16 18h12v4H16z"/>
+    <path d="M24 22h24l-4 6H28z"/>
+    <path d="M26 48h20v4H26z"/>
+  </g>
+  <rect x="28" y="28" width="16" height="20" rx="2" fill="#f4b740" opacity=".6"/>
+  <circle cx="36" cy="38" r="5.2" fill="#fff3c4"/>
+</svg>
