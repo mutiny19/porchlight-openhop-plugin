@@ -55,3 +55,14 @@ def test_remove_reports_when_it_is_done(tmp_path, monkeypatch):
     assert removed and w.porch.view()["done_request"] == "42"
     w.porch_requests()  # the same request is never handled twice
     assert len(removed) == 1
+
+
+def test_connect_is_the_only_way_to_get_a_token():
+    page = (ROOT / "plugin" / "ui" / "index.html").read_text()
+    assert "p-token" not in page
+
+
+def test_page_keeps_the_token_until_the_remove_really_worked():
+    page = (ROOT / "plugin" / "ui" / "index.html").read_text()
+    fn = page[page.index("async function finishRemove"):]
+    assert fn.index("if (!done) throw") < fn.index("revokeOwnToken") and fn.index("if (failed) throw") < fn.index("revokeOwnToken")

@@ -416,3 +416,39 @@ def test_names_dropped_from_a_source_stop_being_tried():
     st.set_source_names({"#old1", "#old2", "#keep"})
     st.set_source_names({"#keep", "#new"})
     assert {"#keep", "#new", "#mine"} <= st.guesses and not {"#old1", "#old2"} & st.guesses
+
+
+class _ModeSlot:
+    def __init__(self):
+        self.modes = []
+
+    def set_path_hash_mode(self, mode):
+        self.modes.append(mode)
+
+
+class _Stats:
+    token = "t"
+
+    def __init__(self, stats):
+        self.stats = stats
+
+    def call(self, method, path, **kw):
+        if isinstance(self.stats, Exception):
+            raise self.stats
+        return self.stats
+
+
+@pytest.mark.parametrize("mode", [0, 1, 2])
+def test_companion_copies_the_repeaters_path_hash_mode(tmp_path, mode):
+    p, fc = pc.Porch(tmp_path), _ModeSlot()
+    p.api = _Stats({"config": {"mesh": {"path_hash_mode": mode}}})
+    p._match_path_mode(fc)
+    assert fc.modes == [mode]
+
+
+@pytest.mark.parametrize("stats", [{}, {"config": {"mesh": {"path_hash_mode": 9}}}, RuntimeError("no stats")])
+def test_path_hash_mode_is_left_alone_when_the_repeater_gives_no_usable_answer(tmp_path, stats):
+    p, fc = pc.Porch(tmp_path), _ModeSlot()
+    p.api = _Stats(stats)
+    p._match_path_mode(fc)  # never stops the porch lighting
+    assert fc.modes == []

@@ -158,6 +158,7 @@ class Porch:
             with FrameClient(port) as fc:
                 fc.set_channel(SLOT, CHANNEL, SECRET)
                 name, secret = fc.get_channel(SLOT)
+                self._match_path_mode(fc)
             if secret != SECRET:
                 raise PorchError("The companion didn't keep the #porchlight channel")
             step(f"{CHANNEL} set in channel slot {SLOT}")
@@ -167,6 +168,17 @@ class Porch:
             step(str(e), ok=False)
             self.s.update(lit=False, reason=str(e))
         self._save()
+
+    def _match_path_mode(self, fc) -> None:
+        """A new companion starts on 1-byte path hashes whatever the repeater uses, so copy the repeater's own setting.
+        Never fatal: the porch works either way, and this repeater's mesh may need the setting it already has."""
+        try:
+            stats = self.api.call("GET", "/api/stats") or {}
+            mode = ((stats.get("config") or {}).get("mesh") or {}).get("path_hash_mode")
+            if mode in (0, 1, 2):
+                fc.set_path_hash_mode(mode)
+        except Exception as e:
+            log.warning("couldn't match the repeater's path hash mode: %s", e)
 
     def running(self) -> bool:
         """openHop knows our companion by name, which is how posts are sent. A companion openHop saved but couldn't

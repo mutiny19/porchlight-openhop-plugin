@@ -11,7 +11,7 @@ from __future__ import annotations
 import socket
 import struct
 
-CMD_APP_START, CMD_SEND_CHANNEL_TXT, CMD_GET_CHANNEL, CMD_SET_CHANNEL = 1, 3, 31, 32
+CMD_APP_START, CMD_SEND_CHANNEL_TXT, CMD_GET_CHANNEL, CMD_SET_CHANNEL, CMD_SET_PATH_HASH_MODE = 1, 3, 31, 32, 61
 RESP_OK, RESP_ERR, RESP_SELF_INFO, RESP_SENT, RESP_CHANNEL_INFO = 0, 1, 5, 6, 18
 NAME_SIZE = 32
 
@@ -77,6 +77,10 @@ class FrameClient:
     def set_channel(self, idx: int, name: str, secret: bytes) -> None:
         raw = name.encode("utf-8")[:NAME_SIZE - 1].ljust(NAME_SIZE, b"\0")
         self._send(bytes([CMD_SET_CHANNEL, idx]) + raw + secret[:16])
+        self._expect(RESP_OK)
+
+    def set_path_hash_mode(self, mode: int) -> None:
+        self._send(bytes([CMD_SET_PATH_HASH_MODE, 0, mode]))
         self._expect(RESP_OK)
 
     def send_channel_text(self, idx: int, text: str, timestamp: int) -> None:

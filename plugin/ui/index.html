@@ -164,11 +164,6 @@ label.check input { margin-top: 4px; accent-color: var(--lamp); }
     </div>
     <p class="porch-state" id="porch-state"></p>
     <ul class="steps" id="porch-steps"></ul>
-    <label class="field">openHop API token (optional)
-      <input id="p-token" type="password" autocomplete="new-password" spellcheck="false" placeholder="Leave empty: Porchlight creates its own">
-      <p class="hint">Lets Porchlight read the packet log and run its companion. Leave it empty and Porchlight creates a
-        token named "porchlight" with your dashboard sign-in; Remove revokes it again.</p>
-    </label>
     <label class="field">Area name
       <input id="p-area" spellcheck="false" placeholder="Looked up from the repeater's location">
       <p class="hint">Said in every answer, like "Channels active near Springfield, IL". Leave empty to use the looked-up name.</p>
@@ -516,8 +511,6 @@ label.check input { margin-top: 4px; accent-color: var(--lamp); }
     const note = $("porch-note"); note.classList.remove("bad"); note.textContent = "";
     try {
       let cur = await readSettings();
-      const typed = $("p-token").value.trim().replace(/^Bearer\s+/i, "");
-      if (typed && typed !== cur.api_token) cur = { ...cur, api_token: typed, api_token_id: null };  // owner pasted their own
       if (action === "light" && !cur.api_token) { note.textContent = "Connecting to openHop…"; cur = await connect(cur); }
       const id = String(Date.now());
       await saveSettings({ ...cur, area: $("p-area").value.trim(), light_request: { id, action } });
@@ -530,25 +523,29 @@ label.check input { margin-top: 4px; accent-color: var(--lamp); }
   }
   // After the backend has deleted its companion (it needs the token for that), revoke the token the page made.
   async function finishRemove(id, note) {
-    for (let i = 0; i < 30; i++) {
+    let p = {}, done = false;
+    for (let i = 0; i < 30 && !done; i++) {
       await new Promise((ok) => setTimeout(ok, 1000));
       const r = await api(`/api/plugins/runtime?id=${encodeURIComponent(PLUGIN)}`);
-      const p = ((r.runtime || r).porch) || {};
-      if (p.done_request === id) break;
+      p = ((r.runtime || r).porch) || {};
+      done = p.done_request === id;
     }
+    // Keep the token unless the companion is really gone: Remove needs it to try again.
+    if (!done) throw new Error("Porchlight didn't confirm the remove. Check it's running, then press Remove again");
+    const failed = (p.steps || []).find((s) => !s.ok);
+    if (failed) throw new Error(failed.text);
     const cur = await readSettings();
     if (cur.api_token_id != null) {
       await revokeOwnToken(cur);
       await saveSettings({ ...cur, api_token: "", api_token_id: null });
     }
-    $("p-token").value = "";
     note.textContent = "Removed. Porchlight can now be uninstalled from the Plugins page.";
   }
   $("open-porch").onclick = async () => {
     if (!validToken()) { showSignedOut(); return; }
     try {
       const cur = await readSettings();
-      $("p-token").value = cur.api_token_id == null ? (cur.api_token || "") : ""; $("p-area").value = cur.area || "";
+      $("p-area").value = cur.area || "";
       $("porch-note").textContent = "";
       $("porch").showModal(); renderPorch();
     } catch (e) { setStatus(e.signin ? "Not signed in" : `Can't load settings: ${e.message}`, true); }

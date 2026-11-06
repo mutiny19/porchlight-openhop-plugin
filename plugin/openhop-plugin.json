@@ -2,7 +2,7 @@
   "schema": 1,
   "id": "porchlight",
   "name": "Porchlight",
-  "version": "0.10.1",
+  "version": "0.10.2",
   "description": "Porchlight: every channel this repeater hears, hashtag channel discovery, and a porch light in #porchlight that tells visitors which channels are active nearby.",
   "runtime": {
     "type": "python",

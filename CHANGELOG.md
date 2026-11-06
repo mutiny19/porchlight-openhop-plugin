@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.10.2
+
+- Lighting the porch sets the companion's path hash mode to the repeater's own. New companions start on 1-byte paths,
+  so a repeater using 2-byte paths had a companion that didn't match it. To pick up a later change, light the porch again.
+- **Remove** says "Removed" and revokes the token only once the companion is really gone. If Porchlight doesn't confirm
+  it, or openHop refuses, the page says so and keeps the token so Remove can be tried again.
+- The optional token field is gone: **Connect** is the only way in, so Remove can always revoke the token.
+
 ## 0.10.1
 
 - Names dropped from a name list (or a removed source) stop being tried right away, instead of at the next

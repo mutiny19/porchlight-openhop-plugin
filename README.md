@@ -58,7 +58,7 @@ You need an openHop Repeater 1.1.4 or newer (the first release with plugins) and
    to override it) and press **Light the porch**. Porchlight creates a companion named "Porchlight" on `127.0.0.1`,
    puts `#porchlight` in its channel slot and starts answering.
 
-That's all. Prefer your own token? Paste it in the token field before you light the porch.
+That's all.
 
 **Turn off** stops Porchlight from talking; it keeps reading channels.
 
@@ -87,7 +87,7 @@ porch again before that works (Porchlight picks another port and key), and resta
   other observers heard the answer, and posts a fresh copy when nobody did, which gets past a relay that dropped the first.
 - **openHop changes.** Light the porch adds one companion identity (`porchlight`, bound to `127.0.0.1` on a free port
   between 5060 and 5099) to openHop's configuration. Remove deletes it. Nothing else in openHop is changed.
-- **Credentials.** Connect creates one openHop API token named `porchlight` (or uses one you paste). openHop API
+- **Credentials.** Connect creates one openHop API token named `porchlight`. openHop API
   tokens are not scoped: they can do anything the dashboard can, so Porchlight only uses it for the calls listed below
   and only sends it to the repeater's own API (`api_base`, `http://127.0.0.1:8000`). It is stored in the plugin's
   settings (`config.json` in its data folder). **Remove** revokes it.
