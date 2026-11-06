@@ -1,3 +1,5 @@
+<img src="plugin/ui/logo.svg" alt="Porchlight logo" width="96">
+
 # Porchlight
 
 **An openHop plugin that leaves the porch light on for anyone new to the mesh.**
