@@ -179,7 +179,7 @@ discovering channels and sharing the ones with real local activity. Everyone run
 
 ## Credits and license
 
-Made by [HOOP](https://mutiny19.github.io/hoop/). Channel names come from the community
+A community project, started by [HOOP](https://mutiny19.github.io/hoop/). No one person or group owns it. Channel names come from the community
 [MeshCore channel catalog](https://github.com/marcelverdult/meshcore-channels) (CC0) and from people on the mesh.
 Area names © OpenStreetMap contributors. The extended name list uses place names from
 [GeoNames](https://www.geonames.org/) (CC BY 4.0) and words from [SCOWL](https://github.com/en-wl/wordlist).
