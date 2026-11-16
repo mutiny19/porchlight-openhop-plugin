@@ -145,6 +145,7 @@ label.check input { margin-top: 4px; accent-color: var(--lamp); }
   <header>
     <h1 class="brand"><svg class="logo" viewBox="0 0 32 32" aria-hidden="true"><circle class="halo" cx="18" cy="19" r="11"/><path class="metal" d="M5 4h3v24H5zM8 9h6v2H8z"/><path class="metal" d="M12 11h12l-2 3H14z"/><rect class="glass" x="14" y="14" width="8" height="10" rx="1"/><circle class="bulb" cx="18" cy="19" r="2.6"/><path class="metal" d="M13 24h10v2H13z"/></svg><span>Porchlight</span></h1>
     <div class="status" id="status" role="status">Connecting…</div>
+    <button class="btn" id="update" type="button" hidden></button>
     <button class="btn primary" id="open-porch" type="button">Light the porch</button>
     <button class="btn" id="open-settings" type="button">Channels and keys</button>
   </header>
@@ -371,6 +372,7 @@ label.check input { margin-top: 4px; accent-color: var(--lamp); }
       const ok = !data.status || data.status === "ok";
       setStatus(ok ? `${data.channels.length} channels heard, ${decoded} decoded. Updated ${ago(data.updated)}.` : `Backend: ${data.status}`, !ok);
       renderPorch();
+      renderUpdate();
       render();
     } catch (e) {
       if (e.signin) showSignedOut();
@@ -554,6 +556,54 @@ label.check input { margin-top: 4px; accent-color: var(--lamp); }
   $("porch-off").onclick = () => porchRequest("off");
   $("porch-remove").onclick = () => porchRequest("remove");
 
+  // ---- updates for GitHub installs ----
+  // openHop updates plugins installed from its catalogue by itself. A wheel uploaded from the Plugins page has no
+  // repository in openHop, so Porchlight offers its own update: the backend downloads the newer wheel from this
+  // project's GitHub releases and checks its SHA-256, then this page installs it through openHop's plugin install.
+  let managed = null, updating = false;
+  async function checkManaged() {
+    try { const r = await api(`/api/plugins/updates?id=${encodeURIComponent(PLUGIN)}`); managed = !!r.repository; }
+    catch (e) { if (!e.signin) managed = null; }
+  }
+  function renderUpdate() {
+    const u = (data && data.update) || {}, b = $("update");
+    if (updating) return;
+    b.hidden = !(managed === false && u.available && u.latest);
+    if (!b.hidden) { b.textContent = `Update to ${u.latest}`; b.title = `Installed ${u.current}. Downloads ${u.latest} from GitHub and checks its SHA-256.`; }
+  }
+  async function waitFor(test, seconds) {
+    for (let i = 0; i < seconds; i++) {
+      await new Promise((ok) => setTimeout(ok, 1000));
+      const r = await api(`/api/plugins/runtime?id=${encodeURIComponent(PLUGIN)}`);
+      const v = test(r.runtime || r);
+      if (v) return v;
+    }
+    return null;
+  }
+  $("update").onclick = async () => {
+    const b = $("update"); updating = true; b.disabled = true;
+    try {
+      const id = String(Date.now());
+      b.textContent = "Downloading…";
+      await saveSettings({ ...(await readSettings()), update_request: { id, action: "download" } });
+      const u = await waitFor((rt) => rt.update && rt.update.done_request === id && rt.update, 120);
+      if (!u) throw new Error("Porchlight didn't answer. Is it running?");
+      if (u.error) throw new Error(u.error);
+      if (!u.wheel_path || u.ready !== u.latest) throw new Error("the download wasn't verified");
+      b.textContent = "Installing…";
+      await api("/api/plugins/install", { method: "POST", body: JSON.stringify({ wheel_path: u.wheel_path }) });
+      b.textContent = "Restarting…";
+      try { await api("/api/plugins/restart", { method: "POST", body: JSON.stringify({ id: PLUGIN }) }); } catch (e) { if (e.signin) throw e; }
+      setStatus(`Updated to ${u.ready}. Reloading…`);
+      setTimeout(() => location.reload(), 8000);
+    } catch (e) {
+      updating = false; b.disabled = false;
+      if (e.signin) { showSignedOut(); return; }
+      b.textContent = "Update failed"; setStatus(`Update didn't work: ${e.message}`, true);
+    }
+  };
+
+  checkManaged().then(renderUpdate);
   refresh();
   setInterval(refresh, 5000);
 })();

@@ -20,10 +20,52 @@ from .core import Store
 from .porch import CHANNEL, Api, Porch
 from .regions import Regions
 from .speaker import Speaker
+from .updater import Updater
 
 log = logging.getLogger("porchlight")
 GRP_TXT = 5
 PAGE = 1000
+OPENHOP_CONFIGS = ("/etc/openhop_repeater/config.yaml",)  # standard installs; the Home Assistant add-on links it too
+
+
+def openhop_http(paths=OPENHOP_CONFIGS) -> tuple[str, int]:
+    """openHop's web host and port from its config.yaml `http:` block, without a YAML library (only two scalar keys
+    are needed). Falls back to 127.0.0.1:8000, openHop's default."""
+    host, port = "", 8000
+    for path in paths:
+        try:
+            lines = Path(path).read_text().splitlines()
+        except OSError:
+            continue
+        inside = False
+        for line in lines:
+            if not line.strip() or line.lstrip().startswith("#"):
+                continue
+            if not line[0].isspace():
+                inside = line.split("#", 1)[0].strip() == "http:"
+                continue
+            if inside:
+                key, _, value = line.split("#", 1)[0].strip().partition(":")
+                value = value.strip().strip("'\"")
+                if key == "port" and value.isdigit():
+                    port = int(value)
+                elif key == "host":
+                    host = value
+        break
+    if host in ("", "0.0.0.0", "::", "*", "localhost"):
+        host = "127.0.0.1"
+    elif ":" in host and not host.startswith("["):
+        host = f"[{host}]"
+    return host, port
+
+
+def resolve_api_base(cfg: dict, paths=OPENHOP_CONFIGS) -> str:
+    """The `api_base` setting when the owner set one, else found from openHop's own config."""
+    base = str(cfg.get("api_base") or "").strip().rstrip("/")
+    if base:
+        return base
+    host, port = openhop_http(paths)
+    return f"http://{host}:{port}"
 
 
 class Watcher:
@@ -52,6 +94,8 @@ class Watcher:
         self.porch = Porch(data_dir)
         self.speaker = Speaker(data_dir, self.porch, self.store, lambda: self.latest)
         self._lighting = False
+        self.api_base = "http://127.0.0.1:8000"
+        self.updater = Updater(data_dir)
 
     # ---- files ----
     @staticmethod
@@ -83,8 +127,8 @@ class Watcher:
         except (OSError, ValueError):
             self.cfg = {}
         self.store.configure(self.cfg)
-        base = self.cfg.get("api_base", "http://127.0.0.1:8000")
-        self.porch.configure(self.cfg, Api(base, self._token()) if self._token() else None)
+        self.api_base = resolve_api_base(self.cfg)
+        self.porch.configure(self.cfg, Api(self.api_base, self._token()) if self._token() else None)
         self.speaker.configure(self.cfg)
         log.info("config loaded: %d hashtags, %d private, discovery=%s, %d guesses",
                  len(self.cfg.get("hashtags", [])), len(self.cfg.get("private", [])),
@@ -111,7 +155,7 @@ class Watcher:
             self.last_runtime_write = now
             view = {**self.store.view(now), "status": self.status, "per_channel": self.store.per_channel,
                     "sources": self._sources_view(), "submissions": self.results, "regions": self.regions.view(),
-                    "porch": self.porch.view()}
+                    "porch": self.porch.view(), "update": self.updater.view(), "api_base": self.api_base}
             self._atomic_write(self.runtime_path, view)
             self.latest = view
             self.store.dirty = False
@@ -208,8 +252,7 @@ class Watcher:
         q = {"type": GRP_TXT, "start_timestamp": f"{start:.3f}", "limit": PAGE}
         if end is not None:
             q["end_timestamp"] = f"{end:.3f}"
-        base = self.cfg.get("api_base", "http://127.0.0.1:8000").rstrip("/")
-        req = urllib.request.Request(f"{base}/api/filtered_packets?{urllib.parse.urlencode(q)}",
+        req = urllib.request.Request(f"{self.api_base}/api/filtered_packets?{urllib.parse.urlencode(q)}",
                                      headers={"X-API-Key": self._token()})
         with urllib.request.urlopen(req, timeout=20) as r:
             body = json.load(r)
@@ -302,13 +345,15 @@ class Watcher:
                     self.poll()
                     self.status = "ok"
                     try:
-                        base = self.cfg.get("api_base", "http://127.0.0.1:8000").rstrip("/")
-                        if self.regions.update(base, self._token()):
+                        if self.regions.update(self.api_base, self._token()):
                             self.store.dirty = True
                     except Exception as e:  # regions are extra: never stop channel polling over them
                         log.warning("regions update failed: %s", e)
                 self.process_inbox()
                 self.porch_requests()
+                self.updater.tick(self.cfg.get("update_request"))
+                if self.updater.changed:
+                    self.updater.changed, self.store.dirty = False, True
             except urllib.error.HTTPError as e:
                 self.status = f"openHop API {e.code}" + (": check the API token (press Connect again on the Porchlight page)" if e.code in (401, 403) else "")
             except Exception as e:  # keep running; openHop restarts are normal

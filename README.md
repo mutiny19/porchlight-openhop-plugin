@@ -48,13 +48,21 @@ repeater heard. A channel busy near another porch won't rank here just because t
 
 You need an openHop Repeater 1.1.4 or newer (the first release with plugins) and its dashboard login.
 
-**From a release file** (until Porchlight is in the openHop plugin catalogue):
+**From the openHop plugin catalogue** (once listed): **Plugins**, find Porchlight, press **Install**, then **Open UI**.
 
-1. Download `porchlight_openhop_plugin-<version>-py3-none-any.whl` from this repository's [Releases](../../releases).
-2. In the openHop dashboard, open **Plugins**, press **Install wheel** and choose the file.
+**Straight from GitHub** (works today, on any openHop install):
+
+1. Download `porchlight_openhop_plugin-<version>-py3-none-any.whl` from the
+   [latest release](../../releases/latest).
+2. In the openHop dashboard, open **Plugins**, press **Install wheel** and choose the file. The upload goes through
+   your browser, so nothing has to be copied onto the repeater.
 3. Press **Enable** on Porchlight (a plugin uploaded by hand starts disabled), then **Open UI**.
 
-**From the openHop plugin catalogue** (once listed): **Plugins**, find Porchlight, press **Install**, then **Open UI**.
+Both ways end the same: two buttons on the Porchlight page (below), and updates offered on their own.
+
+**Home Assistant:** the openHop Repeater add-on (Main or Dev channel) runs plugins the same way. Install from the
+catalogue or with **Install wheel** in the add-on's openHop dashboard (port 8000). Porchlight finds openHop's API and
+keeps its data in the add-on's storage, so it survives add-on updates and restarts.
 
 ## Set up: two buttons
 
@@ -71,8 +79,13 @@ That's all.
 
 ## Update
 
-From the catalogue, the Plugins page offers the update. With a release file: **Disable** Porchlight, **Install wheel**
-with the newer file, then **Enable** it again. Settings, channel history and the lit porch are kept.
+- **Installed from the catalogue:** openHop's Plugins page offers each update once the catalogue approves it.
+- **Installed from GitHub:** openHop can't check those for updates, so Porchlight does. It looks at this project's
+  [releases](../../releases) once a day, and when there is a newer one the Porchlight page shows **Update to x.y.z**.
+  One press downloads the wheel from this repository only, checks its SHA-256 against the release, and installs it
+  through openHop's own plugin install. Nothing is installed without that press.
+
+Settings, channel history and the lit porch are kept either way.
 
 ## Uninstall
 
@@ -96,11 +109,12 @@ porch again before that works (Porchlight picks another port and key), and resta
   between 5060 and 5099) to openHop's configuration. Remove deletes it. Nothing else in openHop is changed.
 - **Credentials.** Connect creates one openHop API token named `porchlight`. openHop API
   tokens are not scoped: they can do anything the dashboard can, so Porchlight only uses it for the calls listed below
-  and only sends it to the repeater's own API (`api_base`, `http://127.0.0.1:8000`). It is stored in the plugin's
+  and only sends it to the repeater's own API (`api_base`, normally `http://127.0.0.1:8000`). It is stored in the plugin's
   settings (`config.json` in its data folder). **Remove** revokes it.
 - **openHop API calls.** Read: packet log (`filtered_packets`, `recent_packets`, `packet_by_hash`), `stats`,
   `identities`, `transport_keys`, the plugin's own settings and runtime. Write: create and delete its own companion
-  identity, set its name, send in `#porchlight`. The page itself also creates and revokes the `porchlight` token.
+  identity, set its name, send in `#porchlight`. The page itself also creates and revokes the `porchlight` token, and
+  for an update you pressed, installs and restarts Porchlight through openHop's plugin API.
 - **Network.**
   - One [OpenStreetMap Nominatim](https://nominatim.org) reverse lookup when you light the porch. The location is
     rounded to about 1 km first.
@@ -108,6 +122,8 @@ porch again before that works (Porchlight picks another port and key), and resta
     [MeshCore channel catalog](https://github.com/marcelverdult/meshcore-channels) daily, and Porchlight's extended
     name list (about 170,000 names, 0.6 MB) weekly from this repository's latest release.
   - Only if you set `reach_check_url`: one look-up of each of Porchlight's own posts on that CoreScope.
+  - Once a day, this repository's latest-release information from GitHub's API (a version number and file
+    checksums), and the new wheel only when you press **Update** (installs from GitHub only; see Update).
   - Nothing else leaves the repeater. The plugin page loads nothing from the internet, so it works off-grid.
 - **Data kept.** Up to 100 messages per readable channel, the names people sent in, which visitors were welcomed (by
   their mesh name), and region-scope statistics. All of it stays in the plugin's data folder.
@@ -126,7 +142,7 @@ Everything is under **Channels and keys** and **Light the porch** on the plugin 
 | `auto_channels` | `#wardriving` | Automated channels: listed last and marked "auto", never announced |
 | `local_repeaters` | none | Your own next-door repeaters (hash prefixes); their relays don't count as "it got out" |
 | `ignore_names` | none | Other bots whose posts shouldn't make a channel look busy |
-| `api_base` | `http://127.0.0.1:8000` | Where openHop's API is (change only if you moved openHop's port) |
+| `api_base` | found by itself | Where openHop's API is. Empty = read `http.port` (and `http.host`) from openHop's config; set it only if that fails |
 | `max_posts_per_hour` | 30 | Hard cap on posts |
 | `top_count`, `top_hours` | 4, 72 | How many of the busiest channels to list, over how many hours |
 | `reach_check_url`, `reach_observer` | none | Optional CoreScope check before resending (see Safety) |
@@ -148,8 +164,9 @@ words and their plurals, topics from [`tools/topics.txt`](tools/topics.txt) (`#g
 - Python 3.9 or newer on the repeater. openHop installs Porchlight's one dependency, `pycryptodome`, into the plugin's
   own environment (the repeater needs internet access during install for that).
 - The repeater's location set in openHop, for the area name, or type the area by hand.
-- openHop's API at `http://127.0.0.1:8000`, the default. If you changed openHop's `http.port`, or bound `http.host`
-  to one address only, set Porchlight's `api_base` to match (Plugins, Porchlight, **Config**).
+- Nothing to set for openHop's API: Porchlight reads `http.port` and `http.host` from openHop's
+  `/etc/openhop_repeater/config.yaml` (also there in the Home Assistant add-on), falling back to `127.0.0.1:8000`. Only
+  if openHop's config lives somewhere else and its port isn't 8000, set `api_base` (Plugins, Porchlight, **Config**).
 - Nothing else: no CoreScope, MQTT, bot or other plugin is needed. CoreScope and extra name lists are optional extras.
 
 ## Problems and questions

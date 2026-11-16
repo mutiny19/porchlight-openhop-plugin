@@ -1,5 +1,5 @@
 {
-  "api_base": "http://127.0.0.1:8000",
+  "api_base": "",
   "poll_seconds": 5,
   "per_channel": 100,
   "backfill_hours": 48,
@@ -27,6 +27,7 @@
   ],
   "area": "",
   "light_request": {},
+  "update_request": {},
   "auto_channels": [
     "#wardriving"
   ],

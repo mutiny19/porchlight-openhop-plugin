@@ -2,7 +2,7 @@
   "schema": 1,
   "id": "porchlight",
   "name": "Porchlight",
-  "version": "0.10.2",
+  "version": "0.11.0",
   "description": "Porchlight: every channel this repeater hears, hashtag channel discovery, and a porch light in #porchlight that tells visitors which channels are active nearby.",
   "runtime": {
     "type": "python",
@@ -14,7 +14,7 @@
   },
   "config": {
     "defaults": {
-      "api_base": "http://127.0.0.1:8000",
+      "api_base": "",
       "poll_seconds": 5,
       "per_channel": 100,
       "backfill_hours": 48,
@@ -42,6 +42,7 @@
       ],
       "area": "",
       "light_request": {},
+      "update_request": {},
       "auto_channels": [
         "#wardriving"
       ],

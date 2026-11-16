@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.11.0
+
+- **Updates for GitHub installs.** openHop checks for updates only for plugins installed from its catalogue, so a
+  wheel installed with **Install wheel** never heard of a new version. Porchlight now checks this repository's latest
+  release once a day and, for those installs only, shows **Update to x.y.z** on its page. One press downloads the
+  wheel (from this repository only, a code constant), checks its SHA-256 against the release, and installs and
+  restarts it through openHop's plugin API. Catalogue installs are left to openHop.
+- **Finds openHop's API by itself.** `api_base` now defaults to empty, meaning: read `http.port` and `http.host`
+  from openHop's config, falling back to `127.0.0.1:8000`. A moved port or the Home Assistant add-on needs no
+  setting. An `api_base` you set still wins.
+- README: install from the catalogue or straight from GitHub, Home Assistant notes, how updates work.
+
 ## 0.10.2
 
 - Lighting the porch sets the companion's path hash mode to the repeater's own. New companions start on 1-byte paths,
