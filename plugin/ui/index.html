@@ -198,7 +198,7 @@ label.check input { margin-top: 4px; accent-color: var(--lamp); }
     </label>
     <div class="field"><span>Name sources</span>
       <p class="hint">Lists of hashtag channel names, fetched daily and tried against channels without a key. Add a
-        channel catalog (a .json link) or a plain list of names (.txt or .txt.gz).</p>
+        names index (index.json), a channel catalog (a .json link) or a plain list of names (.txt or .txt.gz).</p>
       <div class="srcs" id="f-sources"></div>
       <div class="add-src"><input id="f-src-url" spellcheck="false" placeholder="https://… a .json, .txt or .txt.gz list"><button class="btn" id="f-src-add" type="button">Add source</button></div>
     </div>
@@ -543,7 +543,7 @@ label.check input { margin-top: 4px; accent-color: var(--lamp); }
     if (!url) return;
     if (!/^https?:\/\//i.test(url)) url = "https://" + url;
     let host; try { host = new URL(url).host; } catch { $("settings-note").textContent = "That isn't a web address"; return; }
-    const type = /\.json(\?|$)/i.test(url) ? "catalog" : "list";
+    const type = /\/index\.json(\?|$)/i.test(url) ? "index" : /\.json(\?|$)/i.test(url) ? "catalog" : "list";
     if (!srcList.some((s) => s.url === url)) srcList.push({ name: host, type, url, every_hours: 24 });
     $("f-src-url").value = ""; renderSources();
   };

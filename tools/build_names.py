@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import argparse
 import gzip
+import io
 import json
 import re
 import unicodedata
@@ -150,6 +151,15 @@ def build(src: Path) -> list[tuple[str, list[str]]]:
     ]
 
 
+def packed(text: str) -> bytes:
+    """gzip with no timestamp or file name inside: the same names always give the same bytes, so the same SHA-256 in
+    the names index, so porches don't download an unchanged list again."""
+    buf = io.BytesIO()
+    with gzip.GzipFile(filename="", mode="wb", fileobj=buf, compresslevel=9, mtime=0) as g:
+        g.write(text.encode("utf-8"))
+    return buf.getvalue()
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n", 1)[0])
     ap.add_argument("inputs", type=Path)
@@ -182,8 +192,7 @@ def main() -> None:
         f"// {len(names)} names",
     ]
     body = "\n".join(header + ["#" + n for n in sorted(names)]) + "\n"
-    with gzip.open(a.out, "wt", encoding="utf-8", compresslevel=9) as f:
-        f.write(body)
+    a.out.write_bytes(packed(body))
     print(f"{len(names)} names, {len(body.encode())} bytes unpacked, {a.out.stat().st_size} bytes gzipped")
     print("  " + "\n  ".join(report))
 

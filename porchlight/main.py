@@ -237,7 +237,11 @@ class Watcher:
                 for src in todo:
                     entry = dict(self.sources_cache.get(src["url"], {}), name=src.get("name"), tried_at=time.time())
                     try:
-                        entry["names"] = sorted(sources.fetch(src))
+                        if src.get("type") == "index":  # only changed parts are downloaded; names are only added
+                            names, entry["parts"] = sources.fetch_index(src, entry)
+                            entry["names"] = sorted(names)
+                        else:
+                            entry["names"] = sorted(sources.fetch(src))
                         entry["fetched_at"], entry["error"] = time.time(), None
                         log.info("name source %s: %d names", src.get("name") or src["url"], len(entry["names"]))
                     except Exception as e:

@@ -116,9 +116,9 @@ porch again before that works (Porchlight picks another port and key), and resta
 - **Network.**
   - One [OpenStreetMap Nominatim](https://nominatim.org) reverse lookup when you light the porch. The location is
     rounded to about 1 km first.
-  - Downloads of the channel-name lists you configure. By default: the community
-    [MeshCore channel catalog](https://github.com/marcelverdult/meshcore-channels) daily, and Porchlight's extended
-    name list (about 170,000 names, 0.6 MB) weekly from this repository's latest release.
+  - Downloads of the channel-name lists you configure. By default only Porchlight's shared names catalogue (see
+    Channel names): a small index once a day from this project's GitHub Pages, and a part of the catalogue only
+    when it changed (usually a few KB; the 0.6 MB guess list only when it is rebuilt).
   - Once a day, this repository's latest-release information from GitHub's API (a version number and file
     checksums), and the new wheel only when you press **Update** (installs from GitHub only; see Update).
   - Nothing else leaves the repeater. The plugin page loads nothing from the internet, so it works off-grid.
@@ -134,7 +134,7 @@ Everything is under **Channels and keys** and **Light the porch** on the plugin 
 | `hashtags` | `#test`, `#wardriving` | Channels to always read (`#porchlight` is always read) |
 | `private` | none | Private channels you're a member of (name and 16-byte key), shown only to you |
 | `discovery` | on | Try names from lists and from `#tags` seen in chat |
-| `name_sources` | channel catalog, extended names | Lists of channel names. Use **Add source** for a `.json` catalog or a `.txt`/`.txt.gz` list |
+| `name_sources` | Porchlight names | Where channel names come from. Use **Add source** for another names index, a `.json` catalog or a `.txt`/`.txt.gz` list |
 | `area` | looked up | The area named in answers |
 | `auto_channels` | `#wardriving` | Automated channels: listed last and marked "auto", never announced |
 | `ignore_names` | none | Other bots whose posts shouldn't make a channel look busy |
@@ -142,15 +142,25 @@ Everything is under **Channels and keys** and **Light the porch** on the plugin 
 | `max_posts_per_hour` | 30 | Hard cap on transmissions, kept across restarts |
 | `top_count`, `top_hours` | 4, 72 | How many of the busiest channels to list, over how many hours |
 
-## Extended name list
+## Channel names
 
 A hashtag channel's key comes from its name, so Porchlight can read one as soon as it tries the right name. Private
-channels have random keys and are never affected. Besides the community catalog and names people send in, every porch
-downloads an extended list built by [`tools/build_names.py`](tools/build_names.py): short numbers, everyday English
-words and their plurals, topics from [`tools/topics.txt`](tools/topics.txt) (`#gmrs`, `#skywarn`, `#js8call`, `#preppers`,
-...), place names, and the patterns the catalog shows people use (`#townmesh`, `#town-wx`, `#de-town`, ...). About
-170,000 names, most likely first, capped at 2 MB. A guessed name only counts when it decodes to a real channel message
-(a sender, the text, and a timestamp after 2020). The Release workflow rebuilds the list for every release.
+channels have random keys and are never affected. Besides names people send in and `#tags` seen in chat, every porch
+uses one shared names catalogue, rebuilt daily by [`tools/build_index.py`](tools/build_index.py) and published at
+`https://mutiny19.github.io/porchlight-openhop-plugin/names/index.json`:
+
+- **Real names:** the community [MeshCore channel catalog](https://github.com/marcelverdult/meshcore-channels) and the
+  channel names that public [CoreScope](tools/corescopes.json) instances have seen. The daily job reads each of them once
+  a day for every porch together; porches never contact them.
+- **Guesses:** built by [`tools/build_names.py`](tools/build_names.py): short numbers, everyday English words and their
+  plurals, topics from [`tools/topics.txt`](tools/topics.txt) (`#gmrs`, `#skywarn`, `#js8call`, `#preppers`, ...), place
+  names, and the patterns the catalog shows people use (`#townmesh`, `#town-wx`, `#de-town`, ...). About 170,000 names,
+  most likely first, capped at 2 MB. Rebuilt monthly.
+
+A porch reads the small index once a day and downloads a part only when its SHA-256 changed, keeping it only if the
+bytes match. Names are only ever added, on the porch and in the catalogue: a name that drops out of a source is still
+tried. A name in the catalogue is only something to try: a channel shows up on a porch, and counts as new there, only
+when that porch decodes a real message on it (a sender, the text, and a timestamp after 2020).
 
 ## Requirements
 
@@ -192,7 +202,8 @@ discovering channels and sharing the ones with real local activity. Everyone run
 ## Credits and license
 
 A community project, started by [HOOP](https://mutiny19.github.io/hoop/). No one person or group owns it. Channel names come from the community
-[MeshCore channel catalog](https://github.com/marcelverdult/meshcore-channels) (CC0) and from people on the mesh.
+[MeshCore channel catalog](https://github.com/marcelverdult/meshcore-channels) (CC0), public CoreScope instances, and
+from people on the mesh.
 Area names © OpenStreetMap contributors. The extended name list uses place names from
 [GeoNames](https://www.geonames.org/) (CC BY 4.0) and words from [SCOWL](https://github.com/en-wl/wordlist).
 

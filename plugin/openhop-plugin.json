@@ -28,16 +28,10 @@
       "api_token": "",
       "name_sources": [
         {
-          "name": "MeshCore channel catalog",
-          "type": "catalog",
-          "url": "https://raw.githubusercontent.com/marcelverdult/meshcore-channels/main/channels-unique.json",
+          "name": "Porchlight names",
+          "type": "index",
+          "url": "https://mutiny19.github.io/porchlight-openhop-plugin/names/index.json",
           "every_hours": 24
-        },
-        {
-          "name": "Porchlight extended names",
-          "type": "list",
-          "url": "https://github.com/mutiny19/porchlight-openhop-plugin/releases/latest/download/porchlight-names.txt.gz",
-          "every_hours": 168
         }
       ],
       "area": "",

@@ -1,0 +1,73 @@
+{
+  "_comment": "Public CoreScope instances the daily names job reads channel names from (once a day, all of them together). Add or remove freely.",
+  "corescopes": [
+    {
+      "name": "Philly (PHLM)",
+      "url": "https://corescope.phlm.sh"
+    },
+    {
+      "name": "Philly 500 (PHLM)",
+      "url": "https://corescope500.phlm.sh"
+    },
+    {
+      "name": "Boston",
+      "url": "https://analyzer.bostonme.sh"
+    },
+    {
+      "name": "Connecticut",
+      "url": "https://analyzer.ctmesh.org"
+    },
+    {
+      "name": "Western NY",
+      "url": "https://map.wnymeshcore.org"
+    },
+    {
+      "name": "Florida",
+      "url": "https://analyzer.mc.flmesh.us"
+    },
+    {
+      "name": "Gulf Coast / Louisiana",
+      "url": "https://analyzer.gulfcoastmesh.org"
+    },
+    {
+      "name": "Texas",
+      "url": "https://analyzer.meshtexas.org"
+    },
+    {
+      "name": "Tennessee",
+      "url": "https://live.tennmesh.com"
+    },
+    {
+      "name": "Chicagoland",
+      "url": "https://corescope.chicagolandmesh.org"
+    },
+    {
+      "name": "Minneapolis-St Paul",
+      "url": "https://corescope.mspmesh.org"
+    },
+    {
+      "name": "Idaho",
+      "url": "https://map.idahomesh.org"
+    },
+    {
+      "name": "Las Vegas",
+      "url": "https://map.lvmesh.com"
+    },
+    {
+      "name": "Nevada",
+      "url": "https://map.nvme.sh"
+    },
+    {
+      "name": "Cascadia (PNW)",
+      "url": "https://analyzer.cascadiamesh.org"
+    },
+    {
+      "name": "Bay Area",
+      "url": "https://corescope.bayareameshcore.org"
+    },
+    {
+      "name": "West Coast",
+      "url": "https://analyzer.wcmesh.com"
+    }
+  ]
+}

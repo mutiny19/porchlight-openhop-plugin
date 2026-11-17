@@ -1,0 +1,70 @@
+# Porchlight's shared names catalogue, rebuilt daily and published on GitHub Pages at
+#   https://<owner>.github.io/<repo>/names/index.json
+# Every porch reads that index once a day and downloads only the parts whose SHA-256 changed (see tools/build_index.py).
+# Real names (community catalog + public CoreScopes) are added daily; the big guess list is rebuilt on the 1st of the
+# month or when run by hand with "rebuild guesses", and otherwise carried over byte for byte.
+# Needs: Settings > Pages > Source: GitHub Actions.
+name: Names
+on:
+  schedule:
+    - cron: "17 6 * * *"
+  workflow_dispatch:
+    inputs:
+      rebuild_guesses:
+        description: Rebuild the guess list too
+        type: boolean
+        default: false
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+concurrency:
+  group: pages
+  cancel-in-progress: false
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install pycryptodome
+      - name: Where the catalogue lives, and whether the guess list is rebuilt
+        id: plan
+        run: |
+          owner="${GITHUB_REPOSITORY%/*}"; repo="${GITHUB_REPOSITORY#*/}"
+          base="https://${owner,,}.github.io/$repo/names/"
+          echo "base=$base" >> "$GITHUB_OUTPUT"
+          rebuild=false
+          if [ "${{ inputs.rebuild_guesses }}" = "true" ] || [ "$(date -u +%d)" = "01" ]; then rebuild=true; fi
+          if ! curl -fsI "${base}index.json" > /dev/null; then rebuild=true; fi  # nothing published yet
+          echo "rebuild=$rebuild" >> "$GITHUB_OUTPUT"
+      - name: Build the guess list
+        if: steps.plan.outputs.rebuild == 'true'
+        run: |
+          mkdir -p names-inputs && cd names-inputs
+          curl -fsSL -o hunspell.zip https://github.com/en-wl/wordlist/releases/download/rel-2026.02.25/hunspell-en_US-2026.02.25.zip
+          curl -fsSL -o cities1000.zip https://download.geonames.org/export/dump/cities1000.zip
+          curl -fsSL -o admin1CodesASCII.txt https://download.geonames.org/export/dump/admin1CodesASCII.txt
+          curl -fsSL -o admin2Codes.txt https://download.geonames.org/export/dump/admin2Codes.txt
+          curl -fsSL -o catalog.json https://raw.githubusercontent.com/marcelverdult/meshcore-channels/main/channels-unique.json
+          unzip -q hunspell.zip en_US.dic && unzip -q cities1000.zip
+          cd .. && python tools/build_names.py names-inputs guesses.txt.gz
+      - name: Build the catalogue (adds to what is published, never removes)
+        run: |
+          args=(site/names --previous "${{ steps.plan.outputs.base }}")
+          if [ -f guesses.txt.gz ]; then args+=(--guesses guesses.txt.gz); fi
+          python tools/build_index.py "${args[@]}"
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

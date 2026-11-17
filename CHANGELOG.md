@@ -25,6 +25,12 @@ Fixes from the openHop plugin catalogue review.
   removes the companion with the owner's dashboard sign-in, so Remove still finishes.
 - The settings dialog's API token field is gone (0.10.2 removed it from the porch dialog only): a pasted token has
   no id, so Remove couldn't revoke it. **Connect** is the only way in.
+- **One shared names catalogue.** Porches get channel names from one place, rebuilt daily by a GitHub job: the community
+  channel catalog and the names public CoreScope instances have seen, plus the extended guess list. A porch reads a
+  small index daily and downloads only a part that changed, checked against its SHA-256. Names are only ever added.
+  CoreScope is read once a day by the job, never by porches. A name in the catalogue is only tried: a channel still
+  counts as new on a porch only when that porch first decodes it. New default `name_sources`; an existing install
+  keeps its own list until it adds the new source.
 - Tests for each of these, including the page's token handling run in node against a fake openHop.
 
 ## 0.11.0
