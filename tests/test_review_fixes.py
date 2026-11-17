@@ -233,3 +233,14 @@ def test_a_save_that_fails_after_posting_does_not_stop_the_answer(tmp_path, monk
         raise OSError("read-only file system")
     monkeypatch.setattr(p, "_save", broken)
     assert p.say("one") and p.say("two")
+
+
+def test_a_settings_file_that_stays_unreadable_shows_on_the_page(tmp_path):
+    (tmp_path / "config.json").write_text("{not json")
+    w = pm.Watcher(tmp_path)
+    for _ in range(3):
+        w.reload_config()
+    assert "unreadable" in w.cfg_error
+    (tmp_path / "config.json").write_text("{}")
+    w.cfg_mtime = None
+    assert w.reload_config() and w.cfg_error == ""

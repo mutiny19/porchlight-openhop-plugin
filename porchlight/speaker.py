@@ -58,6 +58,7 @@ class Speaker:
         self.cfg: dict = {}
         self.started = time.time()
         self.lock = threading.RLock()  # speaker.json state is touched from the main thread and answer threads
+        self.answer_lock = threading.Lock()  # one answer on air at a time: no interleaved parts, one cap check
         self.st = {"greeted": {}, "announced": {}}
         try:
             self.st.update(json.loads(self.path.read_text()))
@@ -251,7 +252,8 @@ class Speaker:
         heard_here = any(r.get("result") == "named" or (r.get("result") == "known" and r.get("total")) for r in results)
         done = (lambda: False) if heard_here else (lambda: time.time() - self.replied_add.get(sender.lower(), 0) <= 120)
         if not heard_here:  # give porches that heard the channel the first word; this one only confirms if none does
-            time.sleep(float(self.c("confirm_wait_s", 30)))
+            # longer than the farthest answering porch waits (8 hops x 5 s + 4 s jitter + up to 30 s for quiet air)
+            time.sleep(float(self.c("confirm_wait_s", 75)))
         if not self._wait_turn(hops, done):
             log.info("speaker: another porch answered %s's names and none was heard here, staying quiet", sender)
             return
@@ -263,11 +265,15 @@ class Speaker:
     def _send_parts(self, parts: list, sender: str, check_others: bool) -> bool:
         """An answer's parts in order. Only the first carries @[who] (other porches see who was answered from it);
         the rest follow right after with their 2/3 label."""
-        left = getattr(self.porch, "posts_left", lambda: len(parts))()
-        if len(parts) > left:
-            log.warning("speaker: answer to %s needs %d posts, the hourly cap leaves %d; not starting it", sender,
-                        len(parts), left)
-            return False
+        with self.answer_lock:
+            left = getattr(self.porch, "posts_left", lambda: len(parts))()
+            if len(parts) > left:
+                log.warning("speaker: answer to %s needs %d posts, the hourly cap leaves %d; not starting it", sender,
+                            len(parts), left)
+                return False
+            return self._send_parts_now(parts, sender, check_others)
+
+    def _send_parts_now(self, parts: list, sender: str, check_others: bool) -> bool:
         ok_all = True
         for i, p in enumerate(parts):
             if i == 0 and check_others and self._answered(sender):
@@ -480,21 +486,33 @@ class Speaker:
         return [f"{i}/{n} {p}" for i, p in enumerate(parts, 1)]
 
 
-def split_at(s: str, room: int) -> tuple[str, str]:
-    """The longest start of s that fits room bytes and the rest, cut between channels (', ') or else between words,
-    never inside a name. A list's heading ("Busiest, 3 days: ") stays with at least its first item when it can.
-    ('', s) when nothing fits."""
+def is_list(s: str) -> bool:
+    colon = s.find(": ")
+    return 0 <= colon < 40
+
+
+def split_at(s: str, room: int, as_list: bool | None = None) -> tuple[str, str]:
+    """The longest start of s that fits room bytes, and the rest. A list ("Busiest, 3 days: #a 4, #b 2") is only cut
+    between items, so a name and its count stay together; when not even its first item fits, the heading goes alone.
+    Other text (help, replies to names) is cut between words. Never cuts inside a name. ('', s) when nothing fits."""
     if len(s.encode()) <= room:
         return s, ""
-    colon = s.find(": ")
-    after = colon + 2 if 0 <= colon < 40 else 0  # cuts inside the heading are a last resort
-    for mark, lo in ((", ", after), (" ", after), (" ", 0)):
-        i = s.rfind(mark)
-        while i > lo and len(s[:i].encode()) > room:
-            i = s.rfind(mark, 0, i)
-        if i > lo or (lo == 0 and i > 0):
-            return s[:i].rstrip(":, "), s[i + len(mark):]
-    return "", s
+    if as_list is None:
+        as_list = is_list(s)
+    if as_list:  # also the rest of a list continuing in another message, which has no heading any more
+        colon = s.find(": ") if is_list(s) else -1
+        i = s.rfind(", ")
+        while i > colon and len(s[:i].encode()) > room:
+            i = s.rfind(", ", 0, i)
+        if i > colon:
+            return s[:i], s[i + 2:]
+        if colon > 0 and len(s[:colon].encode()) <= room:
+            return s[:colon], s[colon + 2:]
+        return "", s
+    i = s.rfind(" ")
+    while i > 0 and len(s[:i].encode()) > room:
+        i = s.rfind(" ", 0, i)
+    return (s[:i], s[i + 1:]) if i > 0 else ("", s)
 
 
 def fill(segs: list, b1: int, b2: int, sep: str) -> list:
@@ -503,7 +521,7 @@ def fill(segs: list, b1: int, b2: int, sep: str) -> list:
     Nothing is dropped and no name is cut."""
     parts, cur, cap = [], "", b1
     for seg in segs:
-        s = seg
+        s, as_list = seg, is_list(seg)
         while s:
             if cur:
                 if len((cur + sep + s).encode()) <= cap:
@@ -511,7 +529,7 @@ def fill(segs: list, b1: int, b2: int, sep: str) -> list:
                     continue
                 parts.append(cur)  # doesn't fit the rest of this message: start the next one
                 cur, cap = "", b2
-            head, rest = split_at(s, cap)
+            head, rest = split_at(s, cap, as_list)
             if not head:  # one word longer than a whole message (MeshCore names never are): cut it, nothing lost
                 cut = cap
                 while cut > 1 and len(s[:cut].encode()) > cap:

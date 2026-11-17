@@ -600,6 +600,15 @@ def test_packing_never_cuts_a_name_drops_one_or_overflows():
                 "New in 7 days: " + ", ".join(names[6:]) if names[6:] else ""]
         parts = sp.Speaker.pack(None, segs, first, rest, hint="Know a channel? Post #name here")
         assert len(parts[0].encode()) <= first and all(len(x.encode()) <= rest for x in parts[1:]), parts
-        tokens = set(" ".join(sp.PART_RE_OUT.sub("", x) for x in parts).replace(",", " ").replace("|", " ").split())
-        for n in names:
-            assert n in tokens, (n, parts)  # whole, never cut
+        bodies = [sp.PART_RE_OUT.sub("", x) for x in parts]
+        for item in segs[0].split(": ", 1)[1].split(", ") + (segs[1].split(": ", 1)[1].split(", ") if segs[1] else []):
+            assert any(item in b for b in bodies), (item, parts)  # a name and its count, whole, in one message
+
+
+def test_a_name_keeps_its_count_with_a_long_sender_name():
+    sender = "Indiana Mesh Mobile 2 KC9XYZ"
+    first = pc.PACKET_TEXT - len(pc.NODE_NAME) - 2 - len(f"@[{sender}] ".encode())
+    rest = pc.PACKET_TEXT - len(pc.NODE_NAME) - 2
+    parts = sp.Speaker.pack(None, ["Busiest, 3 days: #indianapolis-emergency-wx 41, #wx 12, #test 3",
+                                   "New in 7 days: #fishers"], first, rest)
+    assert any("#indianapolis-emergency-wx 41" in p for p in parts), parts

@@ -79,6 +79,7 @@ class Watcher:
         self._fetching = False
         self.cfg: dict = {}
         self.cfg_mtime = None
+        self.cfg_bad, self.cfg_error = 0, ""
         self.store = Store()
         self.cursor = None  # newest packet timestamp already fetched
         self.status = "starting"
@@ -133,8 +134,12 @@ class Watcher:
         except (OSError, ValueError) as e:
             # Caught part way through a save (or unreadable): never apply it, not even at startup, because empty
             # settings would drop every private channel and its messages. Read it again on the next pass.
+            self.cfg_bad += 1
             log.warning("settings not readable yet (%s); trying again", e)
+            if self.cfg_bad >= 3:  # not just a save in progress: say so on the page
+                self.cfg_error = f"settings file unreadable ({str(e)[:80]}); using the last good settings"
             return False
+        self.cfg_bad, self.cfg_error = 0, ""
         self.cfg = cfg
         self.cfg_mtime = mtime
         self.store.configure(self.cfg)
@@ -377,6 +382,8 @@ class Watcher:
                 self.sources_changed = False
                 self.apply_sources()
             self.poll_once()
+            if self.cfg_error:
+                self.status = self.cfg_error
             # The owner's requests (Turn off above all) are handled whatever happened to polling: a turn-off must
             # work while openHop refuses the token or is restarting.
             for step in (self.porch_requests, self.process_inbox, self._update_tick):
