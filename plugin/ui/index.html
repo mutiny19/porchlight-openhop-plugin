@@ -117,6 +117,7 @@ label.check input { margin-top: 4px; accent-color: var(--lamp); }
 .steps li::before { content: "✓ "; color: var(--public); }
 .steps li.bad { color: var(--danger); }
 .steps li.bad::before { content: "✗ "; color: var(--danger); }
+.steps li.handover::before { content: "→ "; color: var(--ink-3); }
 .porch-state { font-weight: 700; }
 .porch-state.dark { color: var(--danger); }
 .srcs { display: grid; gap: 6px; }
@@ -364,7 +365,7 @@ label.check input { margin-top: 4px; accent-color: var(--lamp); }
       const rt = r.runtime || r;
       if (!rt.channels) { setStatus("Waiting for the first scan of the packet log…"); return; }
       data = rt;
-      if (needsConnect(rt)) { renderPorch(); if (!$("pane").querySelector(".empty button")) showConnect(rt); lastRendered = ""; return; }
+      if (needsConnect(rt)) { renderPorch(); if (!$("pane").querySelector(".empty button") || shownConnect !== rt.status) showConnect(rt); lastRendered = ""; return; }
       if (!selected && data.channels.length) selected = data.channels[0].key;
       const decoded = data.channels.filter((c) => c.kind !== "unknown").length;
       const ok = !data.status || data.status === "ok";
@@ -468,7 +469,9 @@ label.check input { margin-top: 4px; accent-color: var(--lamp); }
     note.textContent = "Removed. Porchlight can now be uninstalled from the Plugins page.";
   }
   // </token-lifecycle>
+  let shownConnect = null;
   function showConnect(rt) {
+    shownConnect = rt.status;
     const bad = /check the API token/.test(rt.status || "");
     setStatus(bad ? "openHop refused Porchlight's API token" : "Not connected to this repeater yet", bad);
     $("rail").replaceChildren();
@@ -555,15 +558,21 @@ label.check input { margin-top: 4px; accent-color: var(--lamp); }
     const st = $("porch-state");
     st.textContent = p.lit ? `Lit near ${p.area}${p.lit_at ? ", since " + ago(p.lit_at) : ""}` : `Dark: ${p.reason || "not lit yet"}`;
     st.className = "porch-state" + (p.lit ? "" : " dark");
-    $("porch-steps").replaceChildren(...(p.steps || []).map((x) => el("li", x.ok ? "" : "bad", x.text)));
+    $("porch-steps").replaceChildren(...(p.steps || []).map((x) => el("li", x.ok ? "" : x.token_refused ? "handover" : "bad", x.text)));
+    // the backend finished the request this page sent: drop "Lighting…" / "Turning off…"
+    if (pendingRequest && p.done_request === pendingRequest.id && pendingRequest.action !== "remove") {
+      $("porch-note").textContent = ""; pendingRequest = null;
+    }
     $("p-area").placeholder = p.auto_area ? `Looked up: ${p.auto_area}` : "Looked up from the repeater's location";
   }
+  let pendingRequest = null;
   async function porchRequest(action) {
     const note = $("porch-note"); note.classList.remove("bad"); note.textContent = "";
     try {
       let cur = await readSettings();
       if (action === "light" && !cur.api_token) { note.textContent = "Connecting to openHop…"; cur = await connect(cur); }
       const id = String(Date.now());
+      pendingRequest = { id, action };
       await saveSettings({ ...cur, area: $("p-area").value.trim(), light_request: { id, action } });
       note.textContent = { light: "Lighting… this takes a few seconds", off: "Turning off…", remove: "Removing the companion…" }[action];
       if (action === "remove") await finishRemove(id, note);
