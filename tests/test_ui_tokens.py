@@ -22,7 +22,7 @@ def block() -> str:
 # A fake openHop: settings, tokens and the plugin runtime, with failures the scenario switches on.
 HARNESS = r"""
 const S = JSON.parse(process.argv[process.argv.length - 1]);
-const state = { settings: S.settings, tokens: new Set(S.tokens), nextId: 100, calls: [] };
+const state = { settings: S.settings, tokens: new Set(S.tokens), nextId: 100, calls: [], companion: !!S.companion };
 const PLUGIN = "porchlight";
 let cfg = null;
 globalThis.setTimeout = (f) => Promise.resolve().then(f);
@@ -45,6 +45,11 @@ async function api(path, opts = {}) {
     state.tokens.delete(id); return {};
   }
   if (path.startsWith("/api/plugins/runtime")) return { runtime: { porch: S.porch } };
+  if (path === "/api/identities") return { configured_companions: state.companion ? [{ name: "porchlight" }] : [] };
+  if (path.startsWith("/api/delete_identity") && method === "DELETE") {
+    if (S.companionStuck) throw fail(500, "busy");
+    state.companion = false; return {};
+  }
   throw fail(404, "no route " + path);
 }
 //BLOCK//
@@ -55,7 +60,7 @@ async function api(path, opts = {}) {
     if (S.run === "connect") await connect();
     else await finishRemove(S.requestId, note);
   } catch (e) { error = e.message; }
-  console.log(JSON.stringify({ error, note: note.textContent, settings: state.settings, tokens: [...state.tokens] }));
+  console.log(JSON.stringify({ error, note: note.textContent, settings: state.settings, tokens: [...state.tokens], companion: state.companion }));
 })();
 """
 
@@ -114,3 +119,22 @@ def test_connect_revokes_the_new_token_when_the_settings_dont_save():
     r = run(run="connect", saveFails=True)
     assert r["error"] == "settings write failed"
     assert r["tokens"] == []  # nothing left active that the settings don't know about
+
+
+REFUSED = {"done_request": "r1", "steps": [{"text": "openHop refused Porchlight's API token, so the page removes the companion",
+                                            "ok": False, "token_refused": True}]}
+
+
+def test_remove_finishes_when_the_token_was_revoked_outside_porchlight():
+    # The backend can't reach openHop any more, so the page deletes the companion with the owner's sign-in.
+    r = run(run="remove", requestId="r1", porch=REFUSED, settings={"api_token": "tok7", "api_token_id": 7}, tokens=[],
+            companion=True)
+    assert r["error"] is None and r["note"].startswith("Removed")
+    assert r["companion"] is False and r["settings"]["api_token_id"] is None
+
+
+def test_remove_says_so_when_the_page_cannot_delete_the_companion_either():
+    r = run(run="remove", requestId="r1", porch=REFUSED, settings={"api_token": "tok7", "api_token_id": 7}, tokens=[],
+            companion=True, companionStuck=True)
+    assert "Press Remove again" in r["error"] and r["companion"] is True
+    assert r["settings"]["api_token_id"] == 7

@@ -433,6 +433,19 @@ label.check input { margin-top: 4px; accent-color: var(--lamp); }
       throw e;
     }
   }
+  // The companion Light the porch made, removed with the owner's dashboard sign-in. Only for when openHop refuses
+  // Porchlight's own token (revoked or replaced outside Porchlight), so the backend can't do it.
+  const COMPANION = "porchlight";
+  async function companionThere() {
+    const r = await api("/api/identities");
+    return ((r && r.configured_companions) || []).some((c) => c.name === COMPANION);
+  }
+  async function removeCompanionAsOwner() {
+    if (!await companionThere()) return;
+    try { await api(`/api/delete_identity?name=${COMPANION}&type=companion`, { method: "DELETE" }); }
+    catch (e) { if (e.signin) throw e; }
+    if (await companionThere()) throw new Error("Couldn't remove Porchlight's companion. Press Remove again");
+  }
   // After the backend has deleted its companion (it needs the token for that), revoke the token the page made.
   async function finishRemove(id, note) {
     let p = {}, done = false;
@@ -445,7 +458,8 @@ label.check input { margin-top: 4px; accent-color: var(--lamp); }
     // Keep the token unless the companion is really gone: Remove needs it to try again.
     if (!done) throw new Error("Porchlight didn't confirm the remove. Check it's running, then press Remove again");
     const failed = (p.steps || []).find((s) => !s.ok);
-    if (failed) throw new Error(failed.text);
+    if (failed && failed.token_refused) await removeCompanionAsOwner();  // its token no longer works: do it ourselves
+    else if (failed) throw new Error(failed.text);
     const cur = await readSettings();
     if (cur.api_token_id != null) {
       await revokeOwnToken(cur);  // throws, keeping the token and its id, unless openHop no longer has it

@@ -193,3 +193,12 @@ def test_remove_reports_a_companion_that_is_still_there(tmp_path):
     p.configure({}, FakeApi(companions=[pc.IDENTITY], delete_error=RuntimeError("busy"), gone_after_delete=False))
     p.remove()
     assert not p.s["steps"][0]["ok"] and "busy" in p.s["steps"][0]["text"]
+
+
+def test_remove_flags_a_refused_token_for_the_page(tmp_path):
+    # Token revoked outside Porchlight: the page finishes the remove with the owner's sign-in.
+    p = pc.Porch(tmp_path)
+    p.configure({}, FakeApi())
+    p.api.call = lambda *a, **k: (_ for _ in ()).throw(urllib.error.HTTPError("http://x", 401, "Unauthorized", {}, None))
+    p.remove()
+    assert not p.s["steps"][0]["ok"] and p.s["steps"][0]["token_refused"]

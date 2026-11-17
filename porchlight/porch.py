@@ -249,7 +249,13 @@ class Porch:
                 text = f"Companion '{NODE_NAME}' removed from openHop"
             self.s.update(steps=[{"text": text, "ok": True}], port=None)
         except Exception as e:
-            self.s["steps"] = [{"text": f"Couldn't remove the companion: {e}", "ok": False}]
+            step = {"text": f"Couldn't remove the companion: {e}", "ok": False}
+            if getattr(e, "code", None) in (401, 403):
+                # Its token was revoked or replaced outside Porchlight. The page removes the companion with the owner's
+                # dashboard sign-in instead, so Remove still finishes.
+                step.update(text="openHop refused Porchlight's API token, so the page removes the companion",
+                            token_refused=True)
+            self.s["steps"] = [step]
         self._save()
 
     # ---- the guard ----

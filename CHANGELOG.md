@@ -21,6 +21,8 @@ Fixes from the openHop plugin catalogue review.
 - **The API token is never forgotten while it may still work.** If revoking it fails, the page says so and keeps the
   token and its id so Remove can try again; a token openHop no longer has (404) counts as revoked. If Connect makes a
   token but can't save the settings, it revokes that token.
+- **Remove works after the token was revoked outside Porchlight.** When openHop refuses Porchlight's token, the page
+  removes the companion with the owner's dashboard sign-in, so Remove still finishes.
 - The settings dialog's API token field is gone (0.10.2 removed it from the porch dialog only): a pasted token has
   no id, so Remove couldn't revoke it. **Connect** is the only way in.
 - Tests for each of these, including the page's token handling run in node against a fake openHop.
