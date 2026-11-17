@@ -247,9 +247,13 @@ class Speaker:
             self.mark_greeted(sender)
 
     def _answer_names(self, sender: str, hops: int, names: list, results: list) -> None:
-        done = lambda: time.time() - self.replied_add.get(sender.lower(), 0) <= 120
+        """Every porch that has heard traffic on one of the names answers: each says what its own repeater heard.
+        Porches that heard none of them stay quiet, except that the nearest one still confirms the names were added
+        when no porch has answered at all, so the sender always hears back."""
+        heard_here = any(r.get("result") in ("named", "known") for r in results)
+        done = (lambda: False) if heard_here else (lambda: time.time() - self.replied_add.get(sender.lower(), 0) <= 120)
         if not self._wait_turn(hops, done):
-            log.info("speaker: another porch answered %s's names, staying quiet", sender)
+            log.info("speaker: another porch answered %s's names and none was heard here, staying quiet", sender)
             return
         segs = self.results_segments(results)
         if segs and not done():

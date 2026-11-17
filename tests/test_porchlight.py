@@ -507,3 +507,39 @@ def test_two_porches_hearing_each_other_answer_a_knock_once(tmp_path):
     assert any(x.startswith("@[Ann]") for x in a.porch.said)
     assert not b.porch.said  # heard a's answer, stayed quiet
     assert all(not x.startswith("@[Porchlight]") and not x.startswith("@[Old Porch]") for x in a.porch.said)
+
+
+def test_every_porch_that_heard_a_name_answers_and_the_rest_stay_quiet(tmp_path):
+    """Three porches hear '#x'. Near (no traffic) confirms first; far-with-traffic answers too; far-without stays quiet."""
+    from porchlight.core import Channel
+    porches = {}
+    for name, delay, heard in (("near", 0.0, False), ("far_heard", 0.3, True), ("far_quiet", 0.6, False)):
+        d = tmp_path / name
+        d.mkdir()
+        st = Store()
+        if heard:
+            st.channels["#x"] = Channel("#x", "#x", "discovered", hashtag_secret("#x"), 100)
+            st.channels["#x"].found_at, st.channels["#x"].total = time.time() - 86400, 7
+        s = sp.Speaker(d, FakePorch(), st, lambda: VIEW)
+        s.configure({"reply_hop_seconds": delay, "reply_jitter_seconds": 0, "part_gap_s": 0})
+        porches[name] = s
+
+    def wire(src_name):
+        src = porches[src_name]
+        say = src.porch.say
+
+        def relay(text, **k):
+            say(text, **k)
+            for other_name, other in porches.items():
+                if other_name != src_name:
+                    other.hear({"t": time.time(), "sender": pc.NODE_NAME, "text": text, "hops": 1})
+            return True
+        src.porch.say = relay
+    for n in porches:
+        wire(n)
+    for s in porches.values():
+        s.hear({"t": time.time(), "sender": "Ann", "text": "#x", "hops": 1})
+    time.sleep(1.5)
+    assert porches["near"].porch.said and "added to" in porches["near"].porch.said[0]
+    assert porches["far_heard"].porch.said and "is already on" in porches["far_heard"].porch.said[0]
+    assert porches["far_quiet"].porch.said == []

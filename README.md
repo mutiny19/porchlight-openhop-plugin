@@ -24,7 +24,7 @@ read.
 |---|---|
 | `porchlight` (or `porch light`, `#porchlight`, `knock`, `knock knock`) | First time: one welcome message with the active channels. After that: the busiest channels, the newest names found and any region scopes heard. |
 | `help` | What Porchlight is, how to ask, and how to add a channel name. |
-| `#name` (1 to 3 names) | Adds hashtag channel names. If this repeater already heard that channel, it says so. |
+| `#name` (1 to 3 names) | Adds hashtag channel names. Every porch that has heard the channel says so; if none has, the nearest confirms the name was added. |
 | `porchlight regions` | Region scopes heard in the last 72 hours. |
 | `porchlight 2/3` (or `2 of 3`) | Resends a part of a longer answer that got lost. |
 
