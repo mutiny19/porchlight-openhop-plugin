@@ -56,16 +56,19 @@ def corescope_names(base: str) -> set[str]:
     return clean(n for n in names if str(n or "").strip().startswith("#"))
 
 
-def previous(url: str | None) -> dict:
-    """The published catalogue: {"index": {...}, "<part name>": bytes}. Empty on the first run."""
+def previous(url: str | None, first_run: bool = False) -> dict:
+    """The published catalogue: {"index": {...}, "<part name>": bytes}. Missing is only accepted on a first run: a
+    catalogue that is suddenly not there (Pages off, a wrong address) must not restart from today's names alone."""
     if not url:
         return {}
     base = url.rstrip("/") + "/"
     try:
         idx = json.loads(get(base + "index.json"))
     except urllib.error.HTTPError as e:
-        if e.code == 404:
+        if e.code == 404 and first_run:
             return {}
+        if e.code == 404:
+            raise SystemExit(f"no published catalogue at {base}; run with --first-run only if this is the first one")
         raise
     out = {"index": idx}
     for part in idx.get("parts", []):
@@ -129,12 +132,13 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n", 1)[0])
     ap.add_argument("out", type=Path)
     ap.add_argument("--previous", help="base URL of the published catalogue (its index.json and parts)")
+    ap.add_argument("--first-run", action="store_true", help="no catalogue is published yet: start one")
     ap.add_argument("--guesses", type=Path, help="a freshly built guess list (tools/build_names.py)")
     ap.add_argument("--catalog", default=CATALOG)
     ap.add_argument("--corescopes", type=Path, default=ROOT / "tools" / "corescopes.json")
     a = ap.parse_args()
     corescopes = json.loads(a.corescopes.read_text())["corescopes"]
-    build(a.out, previous(a.previous), a.guesses.read_bytes() if a.guesses else None, a.catalog, corescopes)
+    build(a.out, previous(a.previous, a.first_run), a.guesses.read_bytes() if a.guesses else None, a.catalog, corescopes)
 
 
 if __name__ == "__main__":

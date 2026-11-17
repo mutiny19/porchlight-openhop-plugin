@@ -104,8 +104,9 @@ class Porch:
     def _save(self) -> None:
         with self.save_lock:  # the light, answer and main threads all save
             self.s["sent"] = [[t, x] for t, x in self.sent]
+            snapshot = dict(self.s)  # other threads add keys while we write
             tmp = self.path.with_suffix(".tmp")
-            tmp.write_text(json.dumps(self.s, separators=(",", ":")))
+            tmp.write_text(json.dumps(snapshot, separators=(",", ":")))
             os.replace(tmp, self.path)
 
     def configure(self, cfg: dict, api: Api | None) -> None:
@@ -237,7 +238,10 @@ class Porch:
         self.go_dark("Turned off and its companion removed")
         try:
             if not self.api:
-                raise PorchError("no openHop API token")
+                self.s["steps"] = [{"text": "Porchlight has no API token, so the page removes the companion",
+                                    "ok": False, "token_refused": True}]
+                self._save()
+                return
             if not self._has_companion():
                 text = f"No companion '{NODE_NAME}' in openHop: nothing to remove"
             else:
@@ -324,9 +328,17 @@ class Porch:
             if ok:
                 self.sent.append((time.time(), text))
                 self.last_post = time.time()
-                self._save()  # the hourly cap survives a restart
+                try:
+                    self._save()  # the hourly cap survives a restart
+                except OSError as e:  # a read-only card must not stop the rest of an answer
+                    log.warning("porch: couldn't save after posting: %s", e)
             log.info("porch: %s (%s)", text, "ok" if ok else "FAILED")
             return ok
+
+    def posts_left(self) -> int:
+        """How many more posts the hourly cap allows right now."""
+        now = time.time()
+        return int(self.cfg.get("max_posts_per_hour", 30)) - sum(1 for t, _ in list(self.sent) if now - t < 3600)
 
     def is_mine(self, sender: str, text: str) -> bool:
         """Every porch is called Porchlight, so our own posts are known by what we sent."""

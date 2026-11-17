@@ -122,12 +122,10 @@ class Speaker:
             return  # dark, or old traffic from the backfill: never answer it
         if sender.lower() == NODE_NAME.lower() or sender.lower() in {n.lower() for n in self.c("ignore_names", [])}:
             return  # other porches and bots don't knock
-        if self.looks_like_a_porch(text):
-            return  # a porch under another name (an old or renamed install): porches never answer each other
         hops = m.get("hops") or 0
-        body = re.sub(r"^@\[porchlight\]\s*", "", text, flags=re.I)  # "@[Porchlight] porchlight" is a knock too
-        if body.startswith("@["):
-            return  # talking to someone else
+        body = re.sub(r"^@\[porchlight\]\s*", "", text, flags=re.I)  # a reply to us ("@[Porchlight] porchlight") counts
+        if self.looks_like_a_porch(body):
+            return  # talking to someone else, or a porch under another name: porches never answer each other
         low = body.lower()
         if HELP_RE.match(low):
             self._knock(sender, "help", hops)
@@ -250,8 +248,10 @@ class Speaker:
         """Every porch that has heard traffic on one of the names answers: each says what its own repeater heard.
         Porches that heard none of them stay quiet, except that the nearest one still confirms the names were added
         when no porch has answered at all, so the sender always hears back."""
-        heard_here = any(r.get("result") in ("named", "known") for r in results)
+        heard_here = any(r.get("result") == "named" or (r.get("result") == "known" and r.get("total")) for r in results)
         done = (lambda: False) if heard_here else (lambda: time.time() - self.replied_add.get(sender.lower(), 0) <= 120)
+        if not heard_here:  # give porches that heard the channel the first word; this one only confirms if none does
+            time.sleep(float(self.c("confirm_wait_s", 30)))
         if not self._wait_turn(hops, done):
             log.info("speaker: another porch answered %s's names and none was heard here, staying quiet", sender)
             return
@@ -263,6 +263,11 @@ class Speaker:
     def _send_parts(self, parts: list, sender: str, check_others: bool) -> bool:
         """An answer's parts in order. Only the first carries @[who] (other porches see who was answered from it);
         the rest follow right after with their 2/3 label."""
+        left = getattr(self.porch, "posts_left", lambda: len(parts))()
+        if len(parts) > left:
+            log.warning("speaker: answer to %s needs %d posts, the hourly cap leaves %d; not starting it", sender,
+                        len(parts), left)
+            return False
         ok_all = True
         for i, p in enumerate(parts):
             if i == 0 and check_others and self._answered(sender):
@@ -475,33 +480,46 @@ class Speaker:
         return [f"{i}/{n} {p}" for i, p in enumerate(parts, 1)]
 
 
-def pieces(s: str, b: int) -> list:
-    """A segment too long for one message, cut at ', ' (else at a space) into pieces of at most b bytes."""
-    out = []
-    while len(s.encode()) > b:
-        n = len(s)
-        while n > 1 and len(s[:n].encode()) > b:
-            n -= 1
-        cut = s.rfind(", ", 0, n)
-        if cut < n // 3:
-            cut = s.rfind(" ", 0, n)
-        if cut < n // 3:
-            cut = n
-        out.append(s[:cut].rstrip(", "))
-        s = s[cut:].lstrip(", ")
-    return out + ([s] if s else [])
+def split_at(s: str, room: int) -> tuple[str, str]:
+    """The longest start of s that fits room bytes and the rest, cut between channels (', ') or else between words,
+    never inside a name. A list's heading ("Busiest, 3 days: ") stays with at least its first item when it can.
+    ('', s) when nothing fits."""
+    if len(s.encode()) <= room:
+        return s, ""
+    colon = s.find(": ")
+    after = colon + 2 if 0 <= colon < 40 else 0  # cuts inside the heading are a last resort
+    for mark, lo in ((", ", after), (" ", after), (" ", 0)):
+        i = s.rfind(mark)
+        while i > lo and len(s[:i].encode()) > room:
+            i = s.rfind(mark, 0, i)
+        if i > lo or (lo == 0 and i > 0):
+            return s[:i].rstrip(":, "), s[i + len(mark):]
+    return "", s
 
 
 def fill(segs: list, b1: int, b2: int, sep: str) -> list:
-    """Segments into messages of b1 bytes (the first) and b2 (the rest). A segment that fits a message of its own is
-    never split; a longer one is cut into pieces."""
+    """Segments into messages of b1 bytes (the first) and b2 (the rest). A segment that doesn't fit what is left of
+    a message starts a new one; one longer than a whole message is cut between channels and continues in the next.
+    Nothing is dropped and no name is cut."""
     parts, cur, cap = [], "", b1
     for seg in segs:
-        for piece in pieces(seg, min(b1, b2)):
-            cand = piece if not cur else cur + sep + piece
-            if len(cand.encode()) <= cap:
-                cur = cand
+        s = seg
+        while s:
+            if cur:
+                if len((cur + sep + s).encode()) <= cap:
+                    cur, s = cur + sep + s, ""
+                    continue
+                parts.append(cur)  # doesn't fit the rest of this message: start the next one
+                cur, cap = "", b2
+            head, rest = split_at(s, cap)
+            if not head:  # one word longer than a whole message (MeshCore names never are): cut it, nothing lost
+                cut = cap
+                while cut > 1 and len(s[:cut].encode()) > cap:
+                    cut -= 1
+                head, rest = s[:cut], s[cut:]
+            if rest:
+                parts.append(head)
+                cur, cap, s = "", b2, rest
             else:
-                parts.append(cur)
-                cur, cap = piece, b2
+                cur, s = head, ""
     return parts + ([cur] if cur else [])

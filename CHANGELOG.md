@@ -16,7 +16,7 @@ Fixes from the openHop plugin catalogue review.
   when reading the packet log fails (a refused token, an openHop restart).
 - **Private channel keys follow the settings.** A changed key replaces the old one, and a removed private channel goes
   with its key and messages, including from the saved state. A settings file caught mid-write no longer counts as
-  empty settings.
+  empty settings, not even while Porchlight starts.
 - **Remove always finishes.** A companion that isn't there (the porch was never lit, or an earlier Remove deleted it)
   counts as removed, so the page goes on to revoke the API token.
 - **The API token is never forgotten while it may still work.** If revoking it fails, the page says so and keeps the
@@ -32,6 +32,7 @@ Fixes from the openHop plugin catalogue review.
   CoreScope is read once a day by the job, never by porches. A name in the catalogue is only tried: a channel still
   counts as new on a porch only when that porch first decodes it. New default `name_sources`; an existing install
   keeps its own list until it adds the new source.
+- **An answer goes out whole or not at all at the hourly cap**, never stopping half way.
 - **Nothing in an answer is cut.** Channel lists, the newest names, new regions, help and replies to names sent in
   go out in full; what doesn't fit one message continues in the next (cut between channels, never inside one). Only
   the first message carries `@[who]`, which leaves more room in the rest; follow-ups have their `2/3` label.

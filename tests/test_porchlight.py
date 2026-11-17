@@ -46,7 +46,7 @@ class FakePorch:
 @pytest.fixture
 def speaker(tmp_path):
     s = sp.Speaker(tmp_path, FakePorch(), Store(), lambda: VIEW)
-    s.configure({"reply_hop_seconds": 0, "reply_jitter_seconds": 0, "part_gap_s": 0})
+    s.configure({"reply_hop_seconds": 0, "reply_jitter_seconds": 0, "part_gap_s": 0, "confirm_wait_s": 0})
     return s
 
 
@@ -521,7 +521,7 @@ def test_every_porch_that_heard_a_name_answers_and_the_rest_stay_quiet(tmp_path)
             st.channels["#x"] = Channel("#x", "#x", "discovered", hashtag_secret("#x"), 100)
             st.channels["#x"].found_at, st.channels["#x"].total = time.time() - 86400, 7
         s = sp.Speaker(d, FakePorch(), st, lambda: VIEW)
-        s.configure({"reply_hop_seconds": delay, "reply_jitter_seconds": 0, "part_gap_s": 0})
+        s.configure({"reply_hop_seconds": delay, "reply_jitter_seconds": 0, "part_gap_s": 0, "confirm_wait_s": 0.8})
         porches[name] = s
 
     def wire(src_name):
@@ -539,7 +539,67 @@ def test_every_porch_that_heard_a_name_answers_and_the_rest_stay_quiet(tmp_path)
         wire(n)
     for s in porches.values():
         s.hear({"t": time.time(), "sender": "Ann", "text": "#x", "hops": 1})
-    time.sleep(1.5)
-    assert porches["near"].porch.said and "added to" in porches["near"].porch.said[0]
+    time.sleep(2.5)
     assert porches["far_heard"].porch.said and "is already on" in porches["far_heard"].porch.said[0]
-    assert porches["far_quiet"].porch.said == []
+    assert porches["near"].porch.said == [] and porches["far_quiet"].porch.said == []  # the porch that heard it spoke
+
+
+def test_when_no_porch_heard_a_name_the_nearest_confirms(tmp_path):
+    a, b = tmp_path / "a", tmp_path / "b"
+    a.mkdir(), b.mkdir()
+    near, far = sp.Speaker(a, FakePorch(), Store(), lambda: VIEW), sp.Speaker(b, FakePorch(), Store(), lambda: VIEW)
+    near.configure({"reply_hop_seconds": 0, "reply_jitter_seconds": 0, "confirm_wait_s": 0.2})
+    far.configure({"reply_hop_seconds": 0.5, "reply_jitter_seconds": 0, "confirm_wait_s": 0.2})
+    say = near.porch.say
+
+    def relay(text, **k):
+        say(text, **k)
+        far.hear({"t": time.time(), "sender": pc.NODE_NAME, "text": text, "hops": 1})
+        return True
+    near.porch.say = relay
+    for s in (near, far):
+        s.hear({"t": time.time(), "sender": "Ann", "text": "#brand-new-name", "hops": 1})
+    time.sleep(1.5)
+    assert near.porch.said == ["@[Ann] #brand-new-name added to Porchlight Springfield, IL"]
+    assert far.porch.said == []
+
+
+def test_a_configured_channel_never_heard_is_not_heard_here(speaker):
+    from porchlight.core import Channel
+    speaker.store.channels["#cfg"] = Channel("#cfg", "#cfg", "hashtag", hashtag_secret("#cfg"), 100)  # total 0
+    speaker.configure({"reply_hop_seconds": 0, "reply_jitter_seconds": 0, "confirm_wait_s": 0.5})
+    speaker.replied_add["ann"] = time.time()  # another porch already answered Ann
+    assert hear_all(speaker, "Ann", "#cfg", settle=0.8) == []
+
+
+def test_a_reply_to_porchlight_is_still_a_knock(speaker):
+    assert hear(speaker, "Alice", "@[Porchlight] porchlight")
+    out = hear(speaker, "Bob", "@[Porchlight] #zzqtest")
+    assert out and "#zzqtest" in out[0]
+    assert not hear(speaker, "Cat", "@[Dan] porchlight")  # talking to someone else
+
+
+def test_the_whole_answer_or_nothing_at_the_hourly_cap(speaker):
+    speaker.view_fn = lambda: MANY
+    speaker.configure({"reply_hop_seconds": 0, "reply_jitter_seconds": 0, "part_gap_s": 0, "top_count": 8})
+    speaker.porch.posts_left = lambda: 1  # room for one post, the answer needs several
+    speaker.mark_greeted("Ann")
+    assert hear_all(speaker, "Ann", "porchlight") == []
+
+
+def test_packing_never_cuts_a_name_drops_one_or_overflows():
+    import random
+    rnd = random.Random(7)
+    word = lambda n: "".join(rnd.choice("abcdefghijklmnopqrstuvwxyz-") for _ in range(n)).strip("-") or "x"
+    for _ in range(3000):
+        sender = "S" * rnd.randint(1, 31)
+        first = pc.PACKET_TEXT - len(pc.NODE_NAME) - 2 - len(f"@[{sender}] ".encode())
+        rest = pc.PACKET_TEXT - len(pc.NODE_NAME) - 2
+        names = ["#" + word(rnd.randint(1, 31)) for _ in range(rnd.randint(1, 12))]
+        segs = [f"Busiest, 3 days: " + ", ".join(f"{n} {rnd.randint(1, 99)}" for n in names[:6]),
+                "New in 7 days: " + ", ".join(names[6:]) if names[6:] else ""]
+        parts = sp.Speaker.pack(None, segs, first, rest, hint="Know a channel? Post #name here")
+        assert len(parts[0].encode()) <= first and all(len(x.encode()) <= rest for x in parts[1:]), parts
+        tokens = set(" ".join(sp.PART_RE_OUT.sub("", x) for x in parts).replace(",", " ").replace("|", " ").split())
+        for n in names:
+            assert n in tokens, (n, parts)  # whole, never cut

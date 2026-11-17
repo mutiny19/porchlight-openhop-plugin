@@ -202,3 +202,21 @@ def test_build_refuses_a_much_smaller_guess_list(tmp_path, monkeypatch):
 def test_same_names_give_the_same_bytes():
     assert gz(["#a", "#b"]) == gz(["#b", "#a"])
     assert gzip.decompress(gz(["#a"])) == b"#a\n"
+
+
+def test_a_missing_catalogue_is_only_accepted_on_a_first_run(monkeypatch):
+    import urllib.error
+    def missing(url, timeout=30):
+        raise urllib.error.HTTPError(url, 404, "Not Found", {}, None)
+    monkeypatch.setattr(build_index, "get", missing)
+    with pytest.raises(SystemExit, match="first-run"):
+        build_index.previous("https://example.org/names/")
+    assert build_index.previous("https://example.org/names/", first_run=True) == {}
+
+
+def test_previous_refuses_a_published_part_that_does_not_match(monkeypatch):
+    files = catalogue({"real": ["#a"], "guesses": ["#g"]})
+    files["https://example.org/names/real.txt.gz"] += b"x"
+    monkeypatch.setattr(build_index, "get", lambda url, timeout=30: files[url])
+    with pytest.raises(SystemExit, match="SHA-256"):
+        build_index.previous("https://example.org/names/")

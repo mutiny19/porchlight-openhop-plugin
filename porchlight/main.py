@@ -122,13 +122,20 @@ class Watcher:
         if mtime == self.cfg_mtime and self.cfg:
             return False
         try:
-            self.cfg = json.loads(self.cfg_path.read_text())
-        except ValueError:
-            if self.cfg:  # caught mid-write: keep the settings we have and read it again next time
-                return False
-            self.cfg = {}
-        except OSError:
-            self.cfg = {}
+            cfg = json.loads(self.cfg_path.read_text())
+            if not isinstance(cfg, dict):
+                raise ValueError("not a settings object")
+        except FileNotFoundError:
+            if self.cfg or self.cfg_mtime == "missing":
+                return False  # gone for a moment (being replaced): keep the settings we have
+            cfg = {}  # a first run with no settings file yet
+            mtime = "missing"
+        except (OSError, ValueError) as e:
+            # Caught part way through a save (or unreadable): never apply it, not even at startup, because empty
+            # settings would drop every private channel and its messages. Read it again on the next pass.
+            log.warning("settings not readable yet (%s); trying again", e)
+            return False
+        self.cfg = cfg
         self.cfg_mtime = mtime
         self.store.configure(self.cfg)
         self.api_base = resolve_api_base(self.cfg)

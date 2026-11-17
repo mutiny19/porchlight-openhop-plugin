@@ -202,3 +202,34 @@ def test_remove_flags_a_refused_token_for_the_page(tmp_path):
     p.api.call = lambda *a, **k: (_ for _ in ()).throw(urllib.error.HTTPError("http://x", 401, "Unauthorized", {}, None))
     p.remove()
     assert not p.s["steps"][0]["ok"] and p.s["steps"][0]["token_refused"]
+
+
+def test_a_config_caught_mid_write_at_startup_keeps_private_channels(tmp_path):
+    cfg = tmp_path / "config.json"
+    cfg.write_text(json.dumps({"private": [{"name": "Fam", "secret": KEY_A}]}))
+    w = pm.Watcher(tmp_path)
+    w.reload_config()
+    w.store.add(rec(1, KEY_A, "Ann: hi"))
+    w.save(force=True)
+    cfg.write_text('{"private": [{"na')  # openHop part way through saving, as Porchlight starts
+    w2 = pm.Watcher(tmp_path)
+    w2.load_state()
+    assert w2.reload_config() is False
+    assert "private:Fam" in w2.store.channels  # not wiped
+    cfg.write_text(json.dumps({"private": [{"name": "Fam", "secret": KEY_A}]}))
+    assert w2.reload_config() is True and "private:Fam" in w2.store.channels
+
+
+def test_remove_without_any_token_hands_over_to_the_page(tmp_path):
+    p = pc.Porch(tmp_path)
+    p.configure({}, None)
+    p.remove()
+    assert not p.s["steps"][0]["ok"] and p.s["steps"][0]["token_refused"]
+
+
+def test_a_save_that_fails_after_posting_does_not_stop_the_answer(tmp_path, monkeypatch):
+    p = lit_porch(tmp_path)
+    def broken():
+        raise OSError("read-only file system")
+    monkeypatch.setattr(p, "_save", broken)
+    assert p.say("one") and p.say("two")

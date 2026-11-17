@@ -14,6 +14,10 @@ on:
         description: Rebuild the guess list too
         type: boolean
         default: false
+      first_run:
+        description: First run (no catalogue published yet). Never needed after that.
+        type: boolean
+        default: false
 permissions:
   contents: read
   pages: write
@@ -38,7 +42,7 @@ jobs:
           echo "base=$base" >> "$GITHUB_OUTPUT"
           rebuild=false
           if [ "${{ inputs.rebuild_guesses }}" = "true" ] || [ "$(date -u +%d)" = "01" ]; then rebuild=true; fi
-          if ! curl -fsI "${base}index.json" > /dev/null; then rebuild=true; fi  # nothing published yet
+          if [ "${{ inputs.first_run }}" = "true" ]; then rebuild=true; fi
           echo "rebuild=$rebuild" >> "$GITHUB_OUTPUT"
       - name: Build the guess list
         if: steps.plan.outputs.rebuild == 'true'
@@ -54,6 +58,8 @@ jobs:
       - name: Build the catalogue (adds to what is published, never removes)
         run: |
           args=(site/names --previous "${{ steps.plan.outputs.base }}")
+          # A missing catalogue fails the run (keeps what is published) unless this is the first one.
+          if [ "${{ inputs.first_run }}" = "true" ]; then args+=(--first-run); fi
           if [ -f guesses.txt.gz ]; then args+=(--guesses guesses.txt.gz); fi
           python tools/build_index.py "${args[@]}"
       - uses: actions/upload-pages-artifact@v3
