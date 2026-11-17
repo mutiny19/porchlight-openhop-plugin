@@ -65,7 +65,8 @@ def test_remove_reports_when_it_is_done(tmp_path, monkeypatch):
 
 def test_connect_is_the_only_way_to_get_a_token():
     page = (ROOT / "plugin" / "ui" / "index.html").read_text()
-    assert "p-token" not in page
+    # no field to paste one in: a pasted token has no id, so Remove couldn't revoke it
+    assert "p-token" not in page and "f-token" not in page and 'type="password"' not in page
 
 
 def test_page_keeps_the_token_until_the_remove_really_worked():

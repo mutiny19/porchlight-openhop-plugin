@@ -204,10 +204,6 @@ label.check input { margin-top: 4px; accent-color: var(--lamp); }
     <label class="field">Extra names to try
       <textarea id="f-guesses" rows="2" spellcheck="false" placeholder="#mytown, #mytown-wx"></textarea>
     </label>
-    <label class="field">openHop API token
-      <input id="f-token" type="password" autocomplete="new-password" spellcheck="false" placeholder="Empty: press Connect on the main page">
-      <p class="hint">Lets the plugin read the repeater's packet log. Sent as X-API-Key to this repeater only.</p>
-    </label>
     <div class="row-end">
       <span class="note" id="settings-note"></span>
       <button class="btn" value="cancel" type="submit" formnovalidate>Cancel</button>
@@ -491,7 +487,6 @@ label.check input { margin-top: 4px; accent-color: var(--lamp); }
       $("f-discovery").checked = cfg.discovery !== false;
       $("f-guesses").value = (cfg.guesses || []).join(", ");
       srcList = [...(cfg.name_sources || [])]; renderSources();
-      $("f-token").value = cfg.api_token || "";
       $("settings").showModal();
     } catch (e) { setStatus(e.signin ? "Not signed in" : `Can't load settings: ${e.message}`, true); }
   };
@@ -504,8 +499,7 @@ label.check input { margin-top: 4px; accent-color: var(--lamp); }
       priv.push({ name: m[1], secret: m[2].toLowerCase() });
     }
     const next = { ...cfg, hashtags: [...new Set(splitTags($("f-hashtags").value))], private: priv,
-      discovery: $("f-discovery").checked, guesses: [...new Set(splitTags($("f-guesses").value))], name_sources: srcList,
-      api_token: $("f-token").value.trim().replace(/^Bearer\s+/i, "") };
+      discovery: $("f-discovery").checked, guesses: [...new Set(splitTags($("f-guesses").value))], name_sources: srcList };
     try {
       await api("/api/plugins/settings", { method: "POST", body: JSON.stringify({ id: PLUGIN, config: next, restart: false }) });
       cfg = next; note.textContent = "Saved"; setTimeout(() => $("settings").close(), 500);
