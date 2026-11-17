@@ -92,15 +92,21 @@ class Porch:
         self.api: Api | None = None
         self.cfg: dict = {}
         self.send_lock = threading.Lock()
-        self.sent: list = []  # [(t, text)] our own posts, so we know them when they come back on air
+        self.save_lock = threading.Lock()
+        # [(t, text)] every transmission in the last hour: the hourly cap counts these, and we know our own posts when
+        # they come back on air. Kept in porch.json so a restart doesn't reset the cap.
+        now = time.time()
+        self.sent: list = [(float(t), str(x)) for t, x in self.s.get("sent") or [] if now - float(t) < 3600]
         self.last_check = 0.0
         self.last_post = 0.0  # when we last transmitted; quiet_air waits for this too
 
     # ---- state ----
     def _save(self) -> None:
-        tmp = self.path.with_suffix(".tmp")
-        tmp.write_text(json.dumps(self.s, separators=(",", ":")))
-        os.replace(tmp, self.path)
+        with self.save_lock:  # the light, answer and main threads all save
+            self.s["sent"] = [[t, x] for t, x in self.sent]
+            tmp = self.path.with_suffix(".tmp")
+            tmp.write_text(json.dumps(self.s, separators=(",", ":")))
+            os.replace(tmp, self.path)
 
     def configure(self, cfg: dict, api: Api | None) -> None:
         self.cfg, self.api = cfg, api
@@ -219,15 +225,29 @@ class Porch:
         raise PorchError("openHop saved the companion but couldn't start it. Restart openHop, then press "
                          "Light the porch again")
 
+    def _has_companion(self) -> bool:
+        comps = (self.api.call("GET", "/api/identities") or {}).get("configured_companions") or []
+        return any(c.get("name") == IDENTITY for c in comps)
+
     def remove(self) -> None:
         """Turn off and delete the companion Light the porch created, so nothing of Porchlight is left in openHop's
-        config (do this before uninstalling). Lighting again later creates a fresh one."""
+        config (do this before uninstalling). Lighting again later creates a fresh one. A companion that isn't there
+        (the porch was never lit, or an earlier Remove already deleted it) counts as removed, so Remove can always
+        finish and the page can go on to revoke the API token."""
         self.go_dark("Turned off and its companion removed")
         try:
             if not self.api:
                 raise PorchError("no openHop API token")
-            self.api.call("DELETE", "/api/delete_identity", name=IDENTITY, type="companion")
-            self.s.update(steps=[{"text": f"Companion '{NODE_NAME}' removed from openHop", "ok": True}], port=None)
+            if not self._has_companion():
+                text = f"No companion '{NODE_NAME}' in openHop: nothing to remove"
+            else:
+                try:
+                    self.api.call("DELETE", "/api/delete_identity", name=IDENTITY, type="companion")
+                except Exception:
+                    if self._has_companion():  # really still there: report the delete's own error
+                        raise
+                text = f"Companion '{NODE_NAME}' removed from openHop"
+            self.s.update(steps=[{"text": text, "ok": True}], port=None)
         except Exception as e:
             self.s["steps"] = [{"text": f"Couldn't remove the companion: {e}", "ok": False}]
         self._save()
@@ -279,7 +299,7 @@ class Porch:
             now = time.time()
             self.sent = [(t, x) for t, x in self.sent if now - t < 3600]
             cap = int(self.cfg.get("max_posts_per_hour", 30))
-            if len(self.sent) >= cap:
+            if len(self.sent) >= cap:  # every transmission counts, a part someone asked for again too
                 log.warning("porch: %d posts in the last hour, holding %r", cap, text[:40])
                 return False
             self.quiet_air(quiet_s, max_s)
@@ -297,46 +317,9 @@ class Porch:
             if ok:
                 self.sent.append((time.time(), text))
                 self.last_post = time.time()
+                self._save()  # the hourly cap survives a restart
             log.info("porch: %s (%s)", text, "ok" if ok else "FAILED")
             return ok
-
-    def say_again(self, text: str, timestamp: int, quiet_s: float = 5.0, max_s: float = 30.0) -> bool:
-        """Resend an earlier post as the identical packet: same text, same timestamp. Nodes that already got it drop it
-        as a duplicate, so it never shows twice; only nodes that missed it see it. Goes over the frame port because
-        openHop's REST send can't set a timestamp."""
-        with self.send_lock:
-            self.quiet_air(quiet_s, max_s)
-            if not self.check():
-                return False
-            try:
-                with FrameClient(self.s["port"]) as fc:
-                    fc.send_channel_text(SLOT, text, timestamp)
-                ok = True
-            except Exception as e:
-                log.warning("porch resend failed: %s", e)
-                ok = False
-            if ok:
-                self.last_post = time.time()
-            log.info("porch: resent %s (%s)", text, "ok" if ok else "FAILED")
-            return ok
-
-    def observers_beyond(self, packet_hash: str):
-        """How many observers other than this repeater's own heard packet_hash, per the CoreScope at reach_check_url.
-        None when it can't tell: no URL set, no answer, or not even our own upload there yet (CoreScope behind)."""
-        base = str(self.cfg.get("reach_check_url") or "").rstrip("/")
-        own = str(self.cfg.get("reach_observer") or "")
-        if not base or not own or not packet_hash:
-            return None
-        try:
-            req = urllib.request.Request(f"{base}/api/packets/{packet_hash}", headers={"User-Agent": UA})
-            with urllib.request.urlopen(req, timeout=10) as r:
-                obs = json.load(r).get("observations") or []
-        except Exception:
-            return None
-        names = {o.get("observer_name") for o in obs}
-        if own not in names:
-            return None
-        return len(names - {own})
 
     def is_mine(self, sender: str, text: str) -> bool:
         """Every porch is called Porchlight, so our own posts are known by what we sent."""

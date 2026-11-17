@@ -2,7 +2,7 @@
   "schema": 1,
   "id": "porchlight",
   "name": "Porchlight",
-  "version": "0.11.0",
+  "version": "0.11.1",
   "description": "Porchlight: every channel this repeater hears, hashtag channel discovery, and a porch light in #porchlight that tells visitors which channels are active nearby.",
   "runtime": {
     "type": "python",
@@ -46,14 +46,11 @@
       "auto_channels": [
         "#wardriving"
       ],
-      "local_repeaters": [],
       "ignore_names": [],
       "quiet_days": 7,
       "newest_days": 7,
       "greet_days": 180,
       "max_posts_per_hour": 30,
-      "reach_check_url": "",
-      "reach_observer": "",
       "top_count": 4,
       "top_hours": 72
     }

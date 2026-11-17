@@ -2,7 +2,7 @@
 
 Hashtag channels are public by design: the key is sha256("#name")[:16]. Anything named
 in decrypted chat is added on top of this list at runtime, and more can be added in settings. Local place
-names come from the name sources (the community channel catalog, or your area's CoreScope), not from this list.
+names come from the name sources (the community channel catalog and other lists), not from this list.
 """
 
 _GENERAL = """

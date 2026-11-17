@@ -128,6 +128,16 @@ class Store:
             elif c.kind == "discovered" and kind == "hashtag":
                 c.kind = kind  # the user added a channel we had already discovered
                 self.dirty = True
+            elif kind == "private" and c.secret != secret:
+                c.secret = secret  # a new key for this channel: only the new one decodes from now on
+                self.dirty = True
+        # A private channel that is no longer in the settings goes, key and all, so its key can't decode anything and
+        # isn't written back to the saved state. Its messages go with it: they were decoded with a key the owner removed.
+        configured = {key for key, _, kind, _ in known if kind == "private"}
+        for key in [k for k, c in self.channels.items() if c.kind == "private" and k not in configured]:
+            del self.channels[key]
+            self.by_packet = {ph: v for ph, v in self.by_packet.items() if v[0] != key}
+            self.dirty = True
         self.discovery = bool(cfg.get("discovery", True))
         self.cfg_guesses = {"#" + g.strip().lstrip("#").lower() for g in cfg.get("guesses", []) if g.strip().lstrip("#")}
         self._set_guesses(self._all_guesses())
@@ -205,14 +215,6 @@ class Store:
         if phash in self.by_packet:  # another copy of a message we already have: count it, keep the best signal
             _, m = self.by_packet[phash]
             m["heard"] += 1
-            # Which repeaters relayed this copy: the resend check ignores relays by our own
-            # next-door repeaters (local_repeaters), which repeat everything and don't show the message got any farther.
-            try:
-                path = json.loads(rec.get("original_path") or "[]")
-            except (TypeError, ValueError):
-                path = []
-            if isinstance(path, list) and path and len(m.setdefault("vias", [])) < 8:
-                m["vias"].append([str(x) for x in path])
             if snr is not None and (m.get("snr") is None or snr > m["snr"]):
                 m["snr"], m["rssi"] = snr, rssi
             self.dirty = True

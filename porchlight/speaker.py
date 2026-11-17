@@ -78,7 +78,6 @@ class Speaker:
         self.cfg = dict(cfg)
         tags = lambda v: ["#" + str(x).strip().lstrip("#").lower() for x in (v or []) if str(x).strip().lstrip("#")]
         self.cfg["auto_channels"] = tags(cfg.get("auto_channels", ["#wardriving"]))
-        self.cfg["local_repeaters"] = [str(x).strip().upper() for x in cfg.get("local_repeaters") or [] if str(x).strip()]
 
     def c(self, key, default):
         v = self.cfg.get(key)
@@ -259,39 +258,10 @@ class Speaker:
         return ok_all
 
     def _post(self, text: str, sender: str = "", quiet: float = 5.0) -> bool:
-        ok = self.porch.say(text, quiet_s=quiet, max_s=30.0)
-        if ok and sender:
-            threading.Timer(20.0, self._guarded, args=(self._retry, text, sender, time.time())).start()
-        return ok
-
-    def _retry(self, text: str, sender: str, sent_at: float) -> None:
-        """Resend an answer once if no repeater beyond our own was heard passing it on (it never got out) and no other
-        porch answered that person meanwhile. Announcements are never resent: nobody is waiting for them."""
-        if self._answered(sender) or time.time() - self.replied_add.get(sender.lower(), 0) <= 120:
-            return
-        view = self.view_fn() or {}
-        chan = next((c for c in view.get("channels", []) if c.get("key") == CHANNEL), None)
-        mine = [m for m in (chan or {}).get("msgs", []) if (m.get("sender") or "").lower() == NODE_NAME.lower()
-                and m.get("text") == text and abs((m.get("t") or 0) - sent_at) < 20]
-        if not mine:
-            return  # not in the log yet: can't tell, so don't double-post
-        local = self.c("local_repeaters", [])
-        m = mine[0]
-        if local and "vias" in m:
-            beyond = sum(1 for path in m["vias"] if any(not any(k.startswith(h.upper()) or h.upper().startswith(k) for k in local) for h in path))
-        else:
-            beyond = (m.get("heard") or 1) - 1
-        if beyond == 0:
-            # We often can't hear the relay that carried it, so ask a CoreScope first (if configured)
-            heard = self.porch.observers_beyond(m.get("ph"))
-            if heard:
-                log.info("speaker: %r reached %d observer(s) per CoreScope, no resend", text[:40], heard)
-            elif heard == 0 or not m.get("sts"):
-                log.info("speaker: nobody heard %r, posting it again", text[:40])
-                self.porch.say(text, quiet_s=5.0, max_s=30.0)  # fresh packet: a relay that dropped it won't block it
-            else:
-                log.info("speaker: no repeat heard for %r, resending the identical packet", text[:40])
-                self.porch.say_again(m.get("text") or text, int(m["sts"]))  # can never show twice
+        """One post, never resent: from here we can't tell whether a post got out (the relay that carried it is often
+        out of our hearing), so a resend would mostly be airtime spent on a message people already have. Someone who
+        missed an answer can knock again."""
+        return self.porch.say(text, quiet_s=quiet, max_s=30.0)
 
     # ---- news (main thread, after each poll) ----
     def consider_news(self) -> None:

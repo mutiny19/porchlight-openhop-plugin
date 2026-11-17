@@ -196,10 +196,10 @@ label.check input { margin-top: 4px; accent-color: var(--lamp); }
         <p class="hint">Tries likely names, plus any #tag seen in chat, against channels without a key.</p></span>
     </label>
     <div class="field"><span>Name sources</span>
-      <p class="hint">Lists of hashtag channel names, fetched daily and tried against channels without a key. Add your
-        local CoreScope (its address), a channel catalog (a .json link) or a plain list of names (.txt or .txt.gz).</p>
+      <p class="hint">Lists of hashtag channel names, fetched daily and tried against channels without a key. Add a
+        channel catalog (a .json link) or a plain list of names (.txt or .txt.gz).</p>
       <div class="srcs" id="f-sources"></div>
-      <div class="add-src"><input id="f-src-url" spellcheck="false" placeholder="https://corescope.example.org, or a .json, .txt or .txt.gz list"><button class="btn" id="f-src-add" type="button">Add source</button></div>
+      <div class="add-src"><input id="f-src-url" spellcheck="false" placeholder="https://… a .json, .txt or .txt.gz list"><button class="btn" id="f-src-add" type="button">Add source</button></div>
     </div>
     <label class="field">Extra names to try
       <textarea id="f-guesses" rows="2" spellcheck="false" placeholder="#mytown, #mytown-wx"></textarea>
@@ -267,8 +267,10 @@ label.check input { margin-top: 4px; accent-color: var(--lamp); }
     if (!token) throw signinError();
     const r = await fetch(path, { ...opts, headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}`, ...(opts.headers || {}) } });
     if (r.status === 401 || r.status === 403) throw signinError();
-    const body = await r.json();
-    if (body && body.success === false) throw new Error(body.error || "request failed");
+    let body = null;
+    try { body = await r.json(); } catch {}
+    // e.status lets a caller tell "not there" (404) from a real failure
+    if (!r.ok || (body && body.success === false)) throw Object.assign(new Error((body && body.error) || `HTTP ${r.status}`), { status: r.status });
     return body && "data" in body ? body.data : body;
   }
 
@@ -398,24 +400,64 @@ label.check input { margin-top: 4px; accent-color: var(--lamp); }
   // ---- connect: Porchlight's own openHop API token ----
   // The backend needs an API token to read the packet log. Rather than have the owner create and paste one, the page
   // creates it with the dashboard sign-in it already has (POST /api/auth/tokens) and saves it in the plugin settings.
-  const TOKEN_NAME = "porchlight";
   const needsConnect = (rt) => /^no openHop API token|check the API token/.test((rt && rt.status) || "");
+  // <token-lifecycle> (tests/test_ui_tokens.py runs this block in node against a fake openHop API)
+  // This token has administrator-level access, so it is never forgotten while openHop may still accept it: its id
+  // stays in the settings until openHop confirms the token is gone.
+  const TOKEN_NAME = "porchlight";
+  const sleep = (ms) => new Promise((ok) => setTimeout(ok, ms));
+  const deleteToken = (id) => api(`/api/auth/tokens/${encodeURIComponent(id)}`, { method: "DELETE" });
   async function readSettings() { const r = await api(`/api/plugins/settings?id=${encodeURIComponent(PLUGIN)}`); return r.config || r; }
   async function saveSettings(next) {
     await api("/api/plugins/settings", { method: "POST", body: JSON.stringify({ id: PLUGIN, config: next, restart: false }) });
     cfg = next; return next;
   }
+  // Revoke the token Porchlight made. One openHop doesn't have (404) is already gone; any other failure is thrown
+  // with the settings untouched, so pressing the button again retries.
   async function revokeOwnToken(cur) {
     if (cur.api_token_id == null) return;
-    try { await api(`/api/auth/tokens/${encodeURIComponent(cur.api_token_id)}`, { method: "DELETE" }); } catch (e) { if (e.signin) throw e; }
+    try { await deleteToken(cur.api_token_id); }
+    catch (e) {
+      if (e.signin) throw e;
+      if (e.status !== 404) throw new Error(`couldn't revoke Porchlight's API token (${e.message}). Try again`);
+    }
   }
   async function connect(cur) {
     cur = cur || await readSettings();
     await revokeOwnToken(cur);  // reconnecting replaces the old one instead of piling up tokens
     const made = await api("/api/auth/tokens", { method: "POST", body: JSON.stringify({ name: TOKEN_NAME }) });
     if (!made.token) throw new Error("openHop didn't return a token");
-    return saveSettings({ ...cur, api_token: made.token, api_token_id: made.token_id });
+    try { return await saveSettings({ ...cur, api_token: made.token, api_token_id: made.token_id }); }
+    catch (e) {
+      // Not saved, so nothing would know about the new token: revoke it rather than leave it active.
+      try { if (made.token_id != null) await deleteToken(made.token_id); }
+      catch (e2) {
+        throw new Error(`settings not saved (${e.message}), and the new API token "${TOKEN_NAME}" couldn't be revoked (${e2.message}): delete it under API tokens in openHop`);
+      }
+      throw e;
+    }
   }
+  // After the backend has deleted its companion (it needs the token for that), revoke the token the page made.
+  async function finishRemove(id, note) {
+    let p = {}, done = false;
+    for (let i = 0; i < 30 && !done; i++) {
+      await sleep(1000);
+      const r = await api(`/api/plugins/runtime?id=${encodeURIComponent(PLUGIN)}`);
+      p = ((r.runtime || r).porch) || {};
+      done = p.done_request === id;
+    }
+    // Keep the token unless the companion is really gone: Remove needs it to try again.
+    if (!done) throw new Error("Porchlight didn't confirm the remove. Check it's running, then press Remove again");
+    const failed = (p.steps || []).find((s) => !s.ok);
+    if (failed) throw new Error(failed.text);
+    const cur = await readSettings();
+    if (cur.api_token_id != null) {
+      await revokeOwnToken(cur);  // throws, keeping the token and its id, unless openHop no longer has it
+      await saveSettings({ ...cur, api_token: "", api_token_id: null });
+    }
+    note.textContent = "Removed. Porchlight can now be uninstalled from the Plugins page.";
+  }
+  // </token-lifecycle>
   function showConnect(rt) {
     const bad = /check the API token/.test(rt.status || "");
     setStatus(bad ? "openHop refused Porchlight's API token" : "Not connected to this repeater yet", bad);
@@ -490,8 +532,7 @@ label.check input { margin-top: 4px; accent-color: var(--lamp); }
     if (!url) return;
     if (!/^https?:\/\//i.test(url)) url = "https://" + url;
     let host; try { host = new URL(url).host; } catch { $("settings-note").textContent = "That isn't a web address"; return; }
-    const type = /\.json(\?|$)/i.test(url) ? "catalog" : /\.(txt|gz)(\?|$)/i.test(url) ? "list" : "corescope";
-    if (type === "corescope") url = url.replace(/\/+$/, "");
+    const type = /\.json(\?|$)/i.test(url) ? "catalog" : "list";
     if (!srcList.some((s) => s.url === url)) srcList.push({ name: host, type, url, every_hours: 24 });
     $("f-src-url").value = ""; renderSources();
   };
@@ -522,26 +563,6 @@ label.check input { margin-top: 4px; accent-color: var(--lamp); }
       if (e.signin) { $("porch").close(); showSignedOut(); return; }
       note.textContent = `Didn't work: ${e.message}`; note.classList.add("bad");
     }
-  }
-  // After the backend has deleted its companion (it needs the token for that), revoke the token the page made.
-  async function finishRemove(id, note) {
-    let p = {}, done = false;
-    for (let i = 0; i < 30 && !done; i++) {
-      await new Promise((ok) => setTimeout(ok, 1000));
-      const r = await api(`/api/plugins/runtime?id=${encodeURIComponent(PLUGIN)}`);
-      p = ((r.runtime || r).porch) || {};
-      done = p.done_request === id;
-    }
-    // Keep the token unless the companion is really gone: Remove needs it to try again.
-    if (!done) throw new Error("Porchlight didn't confirm the remove. Check it's running, then press Remove again");
-    const failed = (p.steps || []).find((s) => !s.ok);
-    if (failed) throw new Error(failed.text);
-    const cur = await readSettings();
-    if (cur.api_token_id != null) {
-      await revokeOwnToken(cur);
-      await saveSettings({ ...cur, api_token: "", api_token_id: null });
-    }
-    note.textContent = "Removed. Porchlight can now be uninstalled from the Plugins page.";
   }
   $("open-porch").onclick = async () => {
     if (!validToken()) { showSignedOut(); return; }

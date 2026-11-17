@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.11.1
+
+Fixes from the openHop plugin catalogue review.
+
+- **The hourly cap counts every transmission and survives a restart.** Porchlight no longer resends answers, so
+  `max_posts_per_hour` covers everything it sends. The last hour's posts are kept in `porch.json`, so restarting
+  doesn't reset the count.
+- **No resends, no CoreScope.** The resend check depended on hearing a relay, and the relay that carried a post is
+  often out of the repeater's hearing, so it mostly resent answers people already had. Removed with it: the
+  `reach_check_url`, `reach_observer` and `local_repeaters` settings and the CoreScope name-source type (an existing
+  CoreScope source shows as failed, with a note to remove it). Name sources are `.json` catalogs and `.txt` lists.
+- **Turn off works while openHop's API fails.** Turn off, Remove and Light the porch are handled on every pass even
+  when reading the packet log fails (a refused token, an openHop restart).
+- **Private channel keys follow the settings.** A changed key replaces the old one, and a removed private channel goes
+  with its key and messages, including from the saved state. A settings file caught mid-write no longer counts as
+  empty settings.
+- **Remove always finishes.** A companion that isn't there (the porch was never lit, or an earlier Remove deleted it)
+  counts as removed, so the page goes on to revoke the API token.
+- **The API token is never forgotten while it may still work.** If revoking it fails, the page says so and keeps the
+  token and its id so Remove can try again; a token openHop no longer has (404) counts as revoked. If Connect makes a
+  token but can't save the settings, it revokes that token.
+- Tests for each of these, including the page's token handling run in node against a fake openHop.
+
 ## 0.11.0
 
 - **Updates for GitHub installs.** openHop checks for updates only for plugins installed from its catalogue, so a

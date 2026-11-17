@@ -31,14 +31,11 @@
   "auto_channels": [
     "#wardriving"
   ],
-  "local_repeaters": [],
   "ignore_names": [],
   "quiet_days": 7,
   "newest_days": 7,
   "greet_days": 180,
   "max_posts_per_hour": 30,
-  "reach_check_url": "",
-  "reach_observer": "",
   "top_count": 4,
   "top_hours": 72
 }

@@ -42,13 +42,9 @@ class FakePorch:
     def is_mine(self, sender, text):
         return sender == pc.NODE_NAME and text in self.said
 
-    def observers_beyond(self, ph):
-        return None  # no CoreScope configured
-
 
 @pytest.fixture
-def speaker(tmp_path, monkeypatch):
-    monkeypatch.setattr(sp.threading, "Timer", lambda *a, **k: type("T", (), {"start": lambda self: None})())
+def speaker(tmp_path):
     s = sp.Speaker(tmp_path, FakePorch(), Store(), lambda: VIEW)
     s.configure({"reply_hop_seconds": 0, "reply_jitter_seconds": 0})
     return s
@@ -143,18 +139,6 @@ def test_part_labels_are_short_and_still_recognised():
     assert sp.OTHER_REPLY_RE.match("@[X] 1/2 Busiest, 3 days: #test 4")
 
 
-def test_a_resend_reuses_the_original_timestamp(speaker):
-    """Same text + same timestamp = the identical packet, so nobody sees a resend twice."""
-    sent = []
-    speaker.porch.say_again = lambda text, ts, **k: sent.append((text, ts)) or True
-    speaker.c = lambda k, d: [] if k == "local_repeaters" else d
-    msg = {"sender": pc.NODE_NAME, "text": "@[Ann] 1/1 Busiest, 3 days: #test 40", "t": time.time(), "sts": 1790000000,
-           "heard": 1}
-    speaker.view_fn = lambda: {"channels": [{"key": sp.CHANNEL, "msgs": [msg]}]}
-    speaker._retry(msg["text"], "Ann", msg["t"])
-    assert sent == [(msg["text"], 1790000000)]
-
-
 def _grp_txt(name, text):
     secret = hashtag_secret(name)
     pt = struct.pack("<IB", int(NOW), 0) + text.encode()
@@ -197,45 +181,6 @@ def test_guard_goes_dark_when_the_slot_changes(tmp_path, monkeypatch):
 def test_help_then_knock_both_get_answers(speaker):
     assert hear(speaker, "Asker", "help")
     assert hear(speaker, "Asker", "porchlight")
-
-
-@pytest.mark.parametrize("heard, expect", [(5, "none"), (0, "fresh"), (None, "identical")])
-def test_resend_asks_corescope_first(speaker, heard, expect):
-    """Heard beyond us: no resend. Nobody heard it: a fresh post. CoreScope can't tell: the identical packet."""
-    calls = []
-    speaker.porch.observers_beyond = lambda ph: heard
-    speaker.porch.say_again = lambda text, ts, **k: calls.append("identical") or True
-    speaker.porch.say = lambda text, **k: calls.append("fresh") or True
-    speaker.c = lambda k, d: [] if k == "local_repeaters" else d
-    msg = {"sender": pc.NODE_NAME, "text": "@[Ann] 1/1 Busiest, 3 days: #test 40", "t": time.time(), "sts": 1790000000,
-           "heard": 1, "ph": "AB12"}
-    speaker.view_fn = lambda: {"channels": [{"key": sp.CHANNEL, "msgs": [msg]}]}
-    speaker._retry(msg["text"], "Ann", msg["t"])
-    assert calls == ([] if expect == "none" else [expect])
-
-
-def test_observers_beyond_needs_our_own_upload(tmp_path, monkeypatch):
-    p = pc.Porch(tmp_path)
-    p.cfg = {"reach_check_url": "https://cs.example", "reach_observer": "MyRepeater"}
-
-    class Resp:
-        def __init__(self, names):
-            self.body = json.dumps({"observations": [{"observer_name": n} for n in names]}).encode()
-
-        def __enter__(self):
-            return self
-
-        def __exit__(self, *a):
-            pass
-
-        def read(self, *a):
-            return self.body
-
-    for names, want in ((["MyRepeater", "A", "B"], 2), (["MyRepeater"], 0), (["A", "B"], None), ([], None)):
-        monkeypatch.setattr(pc.urllib.request, "urlopen", lambda req, timeout=10, n=names: Resp(n))
-        assert p.observers_beyond("AB12") == want, names
-    p.cfg = {}
-    assert p.observers_beyond("AB12") is None  # off unless configured
 
 
 def test_lights_without_a_location_when_the_owner_typed_an_area(tmp_path, monkeypatch):

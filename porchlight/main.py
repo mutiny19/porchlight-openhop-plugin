@@ -121,11 +121,15 @@ class Watcher:
             mtime = None
         if mtime == self.cfg_mtime and self.cfg:
             return False
-        self.cfg_mtime = mtime
         try:
             self.cfg = json.loads(self.cfg_path.read_text())
-        except (OSError, ValueError):
+        except ValueError:
+            if self.cfg:  # caught mid-write: keep the settings we have and read it again next time
+                return False
             self.cfg = {}
+        except OSError:
+            self.cfg = {}
+        self.cfg_mtime = mtime
         self.store.configure(self.cfg)
         self.api_base = resolve_api_base(self.cfg)
         self.porch.configure(self.cfg, Api(self.api_base, self._token()) if self._token() else None)
@@ -327,6 +331,29 @@ class Watcher:
 
         threading.Thread(target=work, name="light-porch", daemon=True).start()
 
+    def poll_once(self) -> None:
+        try:
+            if not self._token():
+                self.status = "no openHop API token yet: press Connect on the Porchlight page"
+                return
+            self.poll()
+            self.status = "ok"
+            try:
+                if self.regions.update(self.api_base, self._token()):
+                    self.store.dirty = True
+            except Exception as e:  # regions are extra: never stop channel polling over them
+                log.warning("regions update failed: %s", e)
+        except urllib.error.HTTPError as e:
+            self.status = f"openHop API {e.code}" + (": check the API token (press Connect again on the Porchlight page)" if e.code in (401, 403) else "")
+        except Exception as e:  # keep running; openHop restarts are normal
+            self.status = f"error: {e}"
+            log.warning("poll failed: %s", e)
+
+    def _update_tick(self) -> None:
+        self.updater.tick(self.cfg.get("update_request"))
+        if self.updater.changed:
+            self.updater.changed, self.store.dirty = False, True
+
     def run(self) -> None:
         self.load_state()
         self.reload_config()
@@ -338,27 +365,14 @@ class Watcher:
             if self.sources_changed:
                 self.sources_changed = False
                 self.apply_sources()
-            try:
-                if not self._token():
-                    self.status = "no openHop API token yet: press Connect on the Porchlight page"
-                else:
-                    self.poll()
-                    self.status = "ok"
-                    try:
-                        if self.regions.update(self.api_base, self._token()):
-                            self.store.dirty = True
-                    except Exception as e:  # regions are extra: never stop channel polling over them
-                        log.warning("regions update failed: %s", e)
-                self.process_inbox()
-                self.porch_requests()
-                self.updater.tick(self.cfg.get("update_request"))
-                if self.updater.changed:
-                    self.updater.changed, self.store.dirty = False, True
-            except urllib.error.HTTPError as e:
-                self.status = f"openHop API {e.code}" + (": check the API token (press Connect again on the Porchlight page)" if e.code in (401, 403) else "")
-            except Exception as e:  # keep running; openHop restarts are normal
-                self.status = f"error: {e}"
-                log.warning("poll failed: %s", e)
+            self.poll_once()
+            # The owner's requests (Turn off above all) are handled whatever happened to polling: a turn-off must
+            # work while openHop refuses the token or is restarting.
+            for step in (self.porch_requests, self.process_inbox, self._update_tick):
+                try:
+                    step()
+                except Exception as e:
+                    log.warning("%s failed: %s", step.__name__, e)
             try:
                 if self.status != self.last_status:  # show status changes without rewriting on every poll
                     self.store.dirty, self.last_status = True, self.status

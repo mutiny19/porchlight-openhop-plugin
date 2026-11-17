@@ -82,9 +82,3 @@ class FrameClient:
     def set_path_hash_mode(self, mode: int) -> None:
         self._send(bytes([CMD_SET_PATH_HASH_MODE, 0, mode]))
         self._expect(RESP_OK)
-
-    def send_channel_text(self, idx: int, text: str, timestamp: int) -> None:
-        """Post text in channel slot idx with a given timestamp. The same text + timestamp gives the identical packet
-        (same hash), which is how a resend avoids showing up twice."""
-        self._send(bytes([CMD_SEND_CHANNEL_TXT, 0, idx]) + struct.pack("<I", int(timestamp)) + text.encode("utf-8"))
-        self._expect(RESP_OK, RESP_SENT)

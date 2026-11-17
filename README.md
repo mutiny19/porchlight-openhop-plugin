@@ -100,11 +100,9 @@ porch again before that works (Porchlight picks another port and key), and resta
 
 - **Radio.** It only posts in `#porchlight` and never sends DMs. The channel is fixed in the code, not a setting.
   Before every post, Porchlight reads the key in its companion's channel slot. If anything changed it, Porchlight goes
-  dark until its owner lights it again. It posts at most 30 messages an hour, waits for quiet air before each one,
-  and resends an answer once only if no repeater was heard passing it on. A resend is the identical packet (same text,
-  same timestamp), so anyone who already got it never sees it twice. Optionally, set `reach_check_url` (a CoreScope that
-  hears your area) and `reach_observer` (this repeater's observer name there): Porchlight then skips the resend when
-  other observers heard the answer, and posts a fresh copy when nobody did, which gets past a relay that dropped the first.
+  dark until its owner lights it again. It transmits at most `max_posts_per_hour` (30) times an hour, counting
+  every transmission, and the count survives a restart. It waits for quiet air before each post and never resends
+  on its own: someone who missed an answer can knock again.
 - **openHop changes.** Light the porch adds one companion identity (`porchlight`, bound to `127.0.0.1` on a free port
   between 5060 and 5099) to openHop's configuration. Remove deletes it. Nothing else in openHop is changed.
 - **Credentials.** Connect creates one openHop API token named `porchlight`. openHop API
@@ -121,7 +119,6 @@ porch again before that works (Porchlight picks another port and key), and resta
   - Downloads of the channel-name lists you configure. By default: the community
     [MeshCore channel catalog](https://github.com/marcelverdult/meshcore-channels) daily, and Porchlight's extended
     name list (about 170,000 names, 0.6 MB) weekly from this repository's latest release.
-  - Only if you set `reach_check_url`: one look-up of each of Porchlight's own posts on that CoreScope.
   - Once a day, this repository's latest-release information from GitHub's API (a version number and file
     checksums), and the new wheel only when you press **Update** (installs from GitHub only; see Update).
   - Nothing else leaves the repeater. The plugin page loads nothing from the internet, so it works off-grid.
@@ -137,15 +134,13 @@ Everything is under **Channels and keys** and **Light the porch** on the plugin 
 | `hashtags` | `#test`, `#wardriving` | Channels to always read (`#porchlight` is always read) |
 | `private` | none | Private channels you're a member of (name and 16-byte key), shown only to you |
 | `discovery` | on | Try names from lists and from `#tags` seen in chat |
-| `name_sources` | channel catalog, extended names | Lists of channel names. Use **Add source** for a CoreScope address, a `.json` catalog or a `.txt`/`.txt.gz` list |
+| `name_sources` | channel catalog, extended names | Lists of channel names. Use **Add source** for a `.json` catalog or a `.txt`/`.txt.gz` list |
 | `area` | looked up | The area named in answers |
 | `auto_channels` | `#wardriving` | Automated channels: listed last and marked "auto", never announced |
-| `local_repeaters` | none | Your own next-door repeaters (hash prefixes); their relays don't count as "it got out" |
 | `ignore_names` | none | Other bots whose posts shouldn't make a channel look busy |
 | `api_base` | found by itself | Where openHop's API is. Empty = read `http.port` (and `http.host`) from openHop's config; set it only if that fails |
-| `max_posts_per_hour` | 30 | Hard cap on posts |
+| `max_posts_per_hour` | 30 | Hard cap on transmissions, kept across restarts |
 | `top_count`, `top_hours` | 4, 72 | How many of the busiest channels to list, over how many hours |
-| `reach_check_url`, `reach_observer` | none | Optional CoreScope check before resending (see Safety) |
 
 ## Extended name list
 
@@ -167,7 +162,7 @@ words and their plurals, topics from [`tools/topics.txt`](tools/topics.txt) (`#g
 - Nothing to set for openHop's API: Porchlight reads `http.port` and `http.host` from openHop's
   `/etc/openhop_repeater/config.yaml` (also there in the Home Assistant add-on), falling back to `127.0.0.1:8000`. Only
   if openHop's config lives somewhere else and its port isn't 8000, set `api_base` (Plugins, Porchlight, **Config**).
-- Nothing else: no CoreScope, MQTT, bot or other plugin is needed. CoreScope and extra name lists are optional extras.
+- Nothing else: no CoreScope, MQTT, bot or other plugin is needed. Extra name lists are optional.
 
 ## Problems and questions
 

@@ -36,8 +36,14 @@ def test_manifest_defaults_match_the_defaults_file():
 
 def test_defaults_carry_no_credentials_or_local_settings():
     d = MANIFEST["config"]["defaults"]
-    assert d["api_token"] == "" and d["area"] == "" and d["private"] == [] and d["local_repeaters"] == []
-    assert d["reach_check_url"] == "" and d["reach_observer"] == ""
+    assert d["api_token"] == "" and d["area"] == "" and d["private"] == []
+
+
+def test_no_corescope_or_resend_settings():
+    # Porchlight doesn't rely on CoreScope and never resends (0.11.1)
+    d = MANIFEST["config"]["defaults"]
+    assert not {"reach_check_url", "reach_observer", "local_repeaters"} & set(d)
+    assert all(src["type"] != "corescope" for src in d["name_sources"])
 
 
 def test_page_loads_nothing_from_the_internet():
