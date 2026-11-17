@@ -397,3 +397,13 @@ def test_path_hash_mode_is_left_alone_when_the_repeater_gives_no_usable_answer(t
     p.api = _Stats(stats)
     p._match_path_mode(fc)  # never stops the porch lighting
     assert fc.modes == []
+
+
+@pytest.mark.parametrize("text", ["knock", "knock knock", "Knock, knock!", "KNOCK KNOCK?", "knock."])
+def test_knock_knock_is_a_knock(speaker, text):
+    assert hear(speaker, f"Visitor-{text}", text)
+
+
+@pytest.mark.parametrize("text", ["knock it off", "knock knock knock", "who knocks", "knockout"])
+def test_other_knock_words_are_not(speaker, text):
+    assert not hear(speaker, f"Visitor-{text}", text)

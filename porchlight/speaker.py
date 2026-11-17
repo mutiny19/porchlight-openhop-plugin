@@ -1,6 +1,6 @@
 """What the porch says in #porchlight, and when (all inside the plugin, so any openHop repeater can run a porch on its own).
 
-- A knock (`porchlight`, `porch light` or `#porchlight` first in a message) gets an answer. A first-time visitor gets
+- A knock (`porchlight`, `porch light` or `#porchlight` first in a message, or just `knock` / `knock knock`) gets an answer. A first-time visitor gets
   one welcoming message (they can't see the channel's history); a known visitor gets the busiest channels, the newest
   names and any region scopes heard. `porchlight add #x`, `porchlight regions`, `porchlight 2 of 3` work too.
 - `help` (or `porchlight help`) says what Porchlight is, how to knock and how it learns names.
@@ -41,6 +41,8 @@ OTHER_REPLY_RE = re.compile(r"^@\[(.+?)\]\s+(?:\d+/\d+ )?(?:Welcome|Busiest|No h
 OTHER_ADD_RE = re.compile(r"^@\[(.+?)\]\s+#\S+ (?:added to|is already on) Porchlight", re.I)
 OTHER_HELP_RE = re.compile(r"^@\[(.+?)\]\s+(?:\d+/\d+ )?Porchlight shows", re.I)
 HELP_RE = re.compile(r"^[!/]?help[!?.]*$", re.I)
+# "knock" or "knock knock" as the whole message is a knock too ("knock it off" is not)
+KNOCK_RE = re.compile(r"^knock(?:[\s,.!]+knock)?[\s!?.]*$", re.I)
 REGION_WORD_RE = re.compile(r"\b(regions?|scopes?)\b", re.I)
 SEP = " | "
 LABEL = len("9/9 ")
@@ -125,6 +127,9 @@ class Speaker:
         low = body.lower()
         if HELP_RE.match(low):
             self._knock(sender, "help", hops)
+            return
+        if KNOCK_RE.match(low):
+            self._knock(sender, "", hops)
             return
         knock = next((k for k in sorted(KNOCKS, key=len, reverse=True)
                       if low == k or low.startswith(k + " ") or re.match(re.escape(k) + r"[!?.]+$", low)), None)

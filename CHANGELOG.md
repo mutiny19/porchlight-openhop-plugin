@@ -32,6 +32,7 @@ Fixes from the openHop plugin catalogue review.
   CoreScope is read once a day by the job, never by porches. A name in the catalogue is only tried: a channel still
   counts as new on a porch only when that porch first decodes it. New default `name_sources`; an existing install
   keeps its own list until it adds the new source.
+- **`knock` and `knock knock` are knocks too**, when they are the whole message ("knock it off" is not).
 - Tests for each of these, including the page's token handling run in node against a fake openHop.
 
 ## 0.11.0
