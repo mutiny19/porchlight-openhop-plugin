@@ -149,7 +149,7 @@ def test_a_catalogue_name_is_new_when_this_porch_first_hears_it(tmp_path):
         area = ""
 
     s = sp.Speaker(tmp_path, P(), st, lambda: view)
-    assert "#tn-blount" in s.newest_text(4, 200)
+    assert "#tn-blount" in s.newest_text(4)
 
 
 def test_a_discovered_channel_survives_a_list_without_its_name():

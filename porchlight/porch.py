@@ -299,7 +299,8 @@ class Porch:
         text = text.strip()
         if not text:
             return False
-        if len(text.encode("utf-8")) > self.budget():
+        if len(text.encode("utf-8")) > self.budget():  # a safety net only: the speaker packs answers to fit
+            log.warning("porch: %r is longer than one packet; cutting it", text[:40])
             text = text.encode("utf-8")[:self.budget() - 3].decode("utf-8", "ignore") + "..."
         with self.send_lock:
             now = time.time()

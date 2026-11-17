@@ -38,7 +38,9 @@ PART_RE = re.compile(r"(\d{1,2})\s*(?:of|/)\s*(\d{1,2})", re.I)
 # "@[who] Welcome!/Top channels/...", an answer to names sent in "@[who] #x added to/is already on Porchlight ...".
 OTHER_ANNOUNCE_RE = re.compile(r"^(#[a-z0-9][a-z0-9_-]{0,40})\s*\(.*\)\s*$", re.I)
 OTHER_REPLY_RE = re.compile(r"^@\[(.+?)\]\s+(?:\d+/\d+ )?(?:Welcome|Busiest|No hashtag channel traffic|Top regions|No region-scoped)", re.I)
-OTHER_ADD_RE = re.compile(r"^@\[(.+?)\]\s+#\S+ (?:added to|is already on) Porchlight", re.I)
+OTHER_ADD_RE = re.compile(r"^@\[(.+?)\]\s+(?:\d+/\d+ )?#\S+ (?:added to|is already on) Porchlight", re.I)
+# A follow-up part ("2/3 ..."): only the first part of an answer carries @[who], so this is what the rest look like.
+PART_RE_OUT = re.compile(r"^\d{1,2}/\d{1,2} ")
 OTHER_HELP_RE = re.compile(r"^@\[(.+?)\]\s+(?:\d+/\d+ )?Porchlight shows", re.I)
 HELP_RE = re.compile(r"^[!/]?help[!?.]*$", re.I)
 # "knock" or "knock knock" as the whole message is a knock too ("knock it off" is not)
@@ -120,6 +122,8 @@ class Speaker:
             return  # dark, or old traffic from the backfill: never answer it
         if sender.lower() == NODE_NAME.lower() or sender.lower() in {n.lower() for n in self.c("ignore_names", [])}:
             return  # other porches and bots don't knock
+        if self.looks_like_a_porch(text):
+            return  # a porch under another name (an old or renamed install): porches never answer each other
         hops = m.get("hops") or 0
         body = re.sub(r"^@\[porchlight\]\s*", "", text, flags=re.I)  # "@[Porchlight] porchlight" is a knock too
         if body.startswith("@["):
@@ -143,6 +147,12 @@ class Speaker:
         if REGION_WORD_RE.search(body) and time.time() - self.regions_at >= 120:
             self.regions_at = time.time()
             self._spawn(self._answer, sender, hops, "regions")
+
+    @staticmethod
+    def looks_like_a_porch(text: str) -> bool:
+        """Porchlight's own kinds of message: an answer (@[who] ...), a follow-up part (2/3 ...) or an announcement
+        (#name (Area))."""
+        return bool(text.startswith("@[") or PART_RE_OUT.match(text) or OTHER_ANNOUNCE_RE.match(text))
 
     def _note_other(self, text: str) -> None:
         now = time.time()
@@ -175,7 +185,7 @@ class Speaker:
             i, n = map(int, PART_RE.fullmatch(args).groups())
             rec = self.sent_parts.get(who)
             if rec and time.time() - rec[0] <= 3600 and len(rec[1]) == n and 1 <= i <= n:
-                self._spawn(self._send_parts, [rec[1][i - 1]], sender, False)
+                self._spawn(self._resend_part, rec[1][i - 1], sender)
             return
         if words and words[0].lower() in ADD_WORDS:
             names = []
@@ -218,24 +228,19 @@ class Speaker:
         if not self._wait_turn(hops, lambda: self._answered(sender)):
             log.info("speaker: another porch answered %s, staying quiet", sender)
             return
-        tag = f"@[{sender}] "
-        budget = self.porch.budget(tag)
         if kind == "help":
-            segs = [self.help_text(budget)]
+            segs, hint, sep = self.help_segments(), "", " "
         elif kind == "regions":
-            segs = self.regions_fitted(budget) or [self.no_regions_text()]
+            segs, hint, sep = self.region_segments() or [self.no_regions_text()], self.short_hint(), SEP
         else:
-            # Top channels and new channels on every call, two messages is fine
-            cap = budget - LABEL
-            newest = self.newest_text(int(self.c("newest_count", 4)), cap)
-            room = cap if newest else budget
+            newest = self.newest_text(int(self.c("newest_count", 4)))
             if self.is_new_visitor(sender):
-                segs = [self.welcome_text(room), newest]
+                segs, hint = [self.welcome_text(), newest], self.welcome_hint()
             else:
-                top = self.top_text(room) or f"No hashtag channel traffic heard here in {self.span()}."
-                segs = [top, newest] + self.region_segments(new=False)
-        hinted = "#name" in segs[0]  # a welcome that kept its own hint
-        parts = self.pack(segs, budget, hint=kind == "regions" or kind == "knock" and not hinted)
+                top = self.top_text() or f"No hashtag channel traffic heard here in {self.span()}."
+                segs, hint = [top, newest] + self.region_segments(new=False), self.short_hint()
+            sep = SEP
+        parts = self.pack(segs, self.porch.budget(f"@[{sender}] "), self.porch.budget(), hint=hint, sep=sep)
         if len(parts) > 1:
             self.sent_parts[sender.lower()] = (time.time(), parts)
         if self._send_parts(parts, sender, True) and kind != "help":
@@ -246,11 +251,14 @@ class Speaker:
         if not self._wait_turn(hops, done):
             log.info("speaker: another porch answered %s's names, staying quiet", sender)
             return
-        text = self.results_text(names, results)
-        if text and not done():
-            self._post(f"@[{sender}] {text}", sender)
+        segs = self.results_segments(results)
+        if segs and not done():
+            parts = self.pack(segs, self.porch.budget(f"@[{sender}] "), self.porch.budget(), sep="; ")
+            self._send_parts(parts, sender, False)
 
     def _send_parts(self, parts: list, sender: str, check_others: bool) -> bool:
+        """An answer's parts in order. Only the first carries @[who] (other porches see who was answered from it);
+        the rest follow right after with their 2/3 label."""
         ok_all = True
         for i, p in enumerate(parts):
             if i == 0 and check_others and self._answered(sender):
@@ -259,8 +267,14 @@ class Speaker:
             # Later parts wait part_gap_s after the previous one (at 8 s, part 2 kept colliding
             # with the next repeaters' relays of part 1 and was lost; part 1 got out)
             gap = float(self.c("part_gap_s", 20))
-            ok_all = self._post(f"@[{sender}] {p}", sender, quiet=5.0 if i == 0 else gap) and ok_all
+            text = f"@[{sender}] {p}" if i == 0 else p
+            ok_all = self._post(text, sender, quiet=5.0 if i == 0 else gap) and ok_all
         return ok_all
+
+    def _resend_part(self, part: str, sender: str) -> bool:
+        """One part again, for `porchlight 2 of 3`: with @[who] when it still fits, else as it was sent."""
+        tagged = f"@[{sender}] {part}"
+        return self._post(tagged if len(tagged.encode()) <= self.porch.budget() else part, sender)
 
     def _post(self, text: str, sender: str = "", quiet: float = 5.0) -> bool:
         """One post, never resent: from here we can't tell whether a post got out (the relay that carried it is often
@@ -341,34 +355,30 @@ class Speaker:
                 names.append(n)
         return names
 
-    def help_text(self, budget: int) -> str:
-        """What Porchlight is (the answer comes from the nearest Porchlight install, which says where it is), how to
-        knock, where its names come from. The longest wording that fits one message. 'Porchlight
-        shows' starts it so other porches recognise the answer (OTHER_HELP_RE)."""
-        # One 99 B packet, plain words. How to use it matters more than where it is, so the area
-        # goes before "Send porchlight" does.
-        heads = ([f"Porchlight shows busy channels near {self.area}."] if self.area else []) + \
-            ["Porchlight shows busy channels nearby.", "Porchlight shows channels."]  # the last one fits a 31-byte name
-        # the richest description that still leaves room for at least "Send porchlight"
-        for head in heads:
-            for tail in (" Send porchlight to list them. Post #name to add one", " Send porchlight to list them",
-                         " Send porchlight"):
-                if len((head + tail).encode()) <= budget:
-                    return head + tail
-        return heads[-1]
+    def help_segments(self) -> list:
+        """What Porchlight is, how to knock, how to add a name: all of it, in two messages when the area is long.
+        'Porchlight shows' starts it so other porches recognise the answer (OTHER_HELP_RE)."""
+        head = f"Porchlight shows busy channels near {self.area}." if self.area else "Porchlight shows busy channels nearby."
+        return [head, "Send porchlight or knock to list them. Post #name to add one"]
 
-    def results_text(self, names: list, results: list) -> str:
+    def short_hint(self) -> str:
+        return str(self.c("short_hint", "Know a channel? Post #name here"))
+
+    def welcome_hint(self) -> str:
+        return str(self.c("welcome_hint", "Know another? Post #name here"))
+
+    def results_segments(self, results: list) -> list:
         where = f"Porchlight {self.area}" if self.area else "Porchlight"
-        parts = []
+        out = []
         for r in results:
             n, res = r.get("name"), r.get("result")
             if res == "named":
-                parts.append(f"{n} added to {where}, found {r.get('total', 0)} msgs here!")
+                out.append(f"{n} added to {where}, found {r.get('total', 0)} msgs here!")
             elif res == "known":
-                parts.append(f"{n} is already on {where}")
+                out.append(f"{n} is already on {where}")
             elif res == "saved":
-                parts.append(f"{n} added to {where}")
-        return "; ".join(parts)
+                out.append(f"{n} added to {where}")
+        return out
 
     def _rows(self) -> list:
         """(name, msgs in top_hours, buffer full, automated) for the busiest hashtag channels of the last top_hours, automated
@@ -393,60 +403,34 @@ class Speaker:
         top = int(self.c("top_count", 4))
         return [r for r in rows if not r[3]][:top] + [r for r in rows if r[3]]
 
-    @staticmethod
-    def _fit(head: str, items: list, max_bytes: int, tail: str = "") -> str:
-        """head + items + tail within max_bytes, dropping automated channels first, then the quietest (never splitting one)."""
-        items = list(items)
-        while items:
-            text = head + ", ".join(items) + tail
-            if len(text.encode("utf-8")) <= max_bytes:
-                return text
-            # People channels matter most, so an automated "(bots)" channel goes first, then the quietest
-            bots = [i for i, x in enumerate(items) if "(bots)" in x]
-            items.pop(bots[-1] if bots else -1)
-        return ""
-
     def span(self) -> str:
         """The look-back window in words people read at a glance: '3 days', '12h' (plain wording)."""
         h = self.top_hours
         return f"{h // 24} days" if h % 24 == 0 and h >= 48 else f"{h}h"
 
-    def top_text(self, max_bytes: int) -> str:
-        # "#echo 45" = messages in the window; automated channels are marked "(bots)" so nobody expects people there
+    def top_text(self) -> str:
+        # "#echo 45" = messages in the window; automated channels are marked "(bots)" so nobody expects people there.
+        # Every channel goes out: what doesn't fit continues in the next message.
         items = [f"{n} (bots)" if a else f"{n} {c}" for n, c, full, a in self._rows()]
-        # Repeat visitors know where they are: no area here (the welcome and help name it); counts = msgs in the window
-        return self._fit(f"Busiest, {self.span()}: ", items, max_bytes)
+        return f"Busiest, {self.span()}: " + ", ".join(items) if items else ""
 
-    def welcome_text(self, max_bytes: int) -> str:
+    def welcome_text(self) -> str:
         where = f" near {self.area}" if self.area else ""
-        hint = str(self.c("welcome_hint", "Know another? Post #name here"))
-        tail = f" | {hint}" if hint else ""
         items = [f"{n} (bots)" if a else n for n, _, _, a in self._rows()]
-        head = f"Welcome! Active{where}: "
-        for t in (tail, ""):  # the hint goes before any channel does
-            text = head + ", ".join(items) + t
-            if items and len(text.encode("utf-8")) <= max_bytes:
-                return text
-        text = self._fit(head, items, max_bytes)
-        if text:
-            return text
-        return f"Welcome! No hashtag channels heard{where} in {self.span()}.{tail}"[:max_bytes]
+        if items:
+            return f"Welcome! Active{where}: " + ", ".join(items)
+        return f"Welcome! No hashtag channels heard{where} in {self.span()}."
 
-    def newest_text(self, count: int, max_bytes: int) -> str:
+    def newest_text(self, count: int) -> str:
         view, now = self.view_fn() or {}, time.time()
         days = float(self.c("newest_days", 7)) * DAY
         found = [(c["found_at"], c["name"]) for c in view.get("channels", [])
                  if c.get("kind") == "discovered" and c.get("found_at") and c.get("name") != CHANNEL
                  and now - c["found_at"] <= days and now - (c.get("last") or 0) <= days]
         items = [n for _, n in sorted(found, reverse=True)[:count]]
-        while items:
-            text = f"New in {round(days / DAY)} days: " + ", ".join(items)
-            if len(text.encode()) <= max_bytes:
-                return text
-            items.pop()
-        return ""
+        return f"New in {round(days / DAY)} days: " + ", ".join(items) if items else ""
 
-    def region_segments(self, new_max: int = 70, new: bool = True) -> list:
+    def region_segments(self, new: bool = True) -> list:
         r = (self.view_fn() or {}).get("regions") or {}
         if not r:
             return []
@@ -454,71 +438,66 @@ class Speaker:
         top = ", ".join(f"{x['name']} {x['count']}" for x in r.get("top", [])[:5])
         other = f" (+{r['unknown']} unknown)" if r.get("unknown") else ""
         segs = [f"Top regions {hours}h: {top or 'none we carry'}{other}"] if top or other else []
-        if not new:
-            return segs
-        fresh = [x["name"] for x in r.get("new_heard", []) if time.time() - (x.get("first") or 0) <= NEW_REGION_DAYS * DAY]
-        shown = list(fresh)
-        while shown:
-            more = len(fresh) - len(shown)
-            t = "New regions: " + ", ".join(shown) + (f" +{more}" if more else "")
-            if len(t.encode()) <= new_max:
-                segs.append(t)
-                break
-            shown.pop()
+        if new:
+            fresh = [x["name"] for x in r.get("new_heard", []) if time.time() - (x.get("first") or 0) <= NEW_REGION_DAYS * DAY]
+            if fresh:
+                segs.append("New regions: " + ", ".join(fresh))
         return segs
-
-    def regions_fitted(self, budget: int) -> list:
-        first = self.region_segments(new=False)
-        room = budget - sum(len(s.encode()) for s in first) - len(SEP)
-        return self.region_segments(new_max=room) if room >= 30 else self.region_segments()
 
     def no_regions_text(self) -> str:
         r = (self.view_fn() or {}).get("regions") or {}
         return f"No region-scoped traffic heard here in {round(r.get('window_days', 3) * 24)}h"
 
-    def pack(self, segs: list, budget: int, hint: bool = False) -> list:
-        """As few messages as the segments fit in, joined with ' | '; 2+ get numbered plus a 'Missed one?' segment.
-        hint=True adds the how-to line when it fits in the last message."""
-        segs = [s for s in segs if s]
-        short_hint = str(self.c("short_hint", "Know a channel? Post #name here"))
-
-        def pieces(s, b):
-            """A segment too long for one message, cut at ', ' (then spaces) into pieces that fit (smaller
-            packets; cutting it off with '...' would drop channels)."""
-            out = []
-            while len(s.encode()) > b:
-                n = len(s)
-                while n > 1 and len(s[:n].encode()) > b:
-                    n -= 1
-                cut = max(s.rfind(", ", 0, n), s.rfind(" ", 0, n) if s.rfind(", ", 0, n) < n // 2 else -1)
-                if cut < n // 3:
-                    cut = n
-                out.append(s[:cut].rstrip(", "))
-                s = s[cut:].lstrip(", ")
-            return out + ([s] if s else [])
-
-        def fill(items, b):
-            parts, cur = [], ""
-            for s in [p for item in items for p in pieces(item, b)]:
-                cand = s if not cur else cur + SEP + s
-                if len(cand.encode()) <= b:
-                    cur = cand
-                else:
-                    parts.append(cur)
-                    cur = s
-            return parts + ([cur] if cur else [])
-
-        def with_hint(parts, b):
-            last = parts[-1] + SEP + short_hint if parts and hint and short_hint else None
-            if last and len(last.encode()) <= b:
-                parts[-1] = last
-            return parts
-
-        parts = fill(segs, budget)
-        if len(parts) <= 1:
-            return with_hint(parts, budget)
-        # Short "1/2" labels and no "Missed one?" segment; with 99 B packets every byte goes to channels.
-        # 'porchlight 2 of 2' still re-sends one part for anyone who asks.
-        parts = with_hint(fill(segs, budget - LABEL), budget - LABEL)
+    def pack(self, segs: list, first: int, rest: int | None = None, hint: str = "", sep: str = SEP) -> list:
+        """Messages for an answer: everything in segs, as few messages as it takes. first/rest = room in the first
+        message (which carries @[who]) and in the ones after. Two or more get 2/3 labels. A segment longer than a
+        message continues in the next one, cut between channels; nothing is dropped. hint (the how-to line) goes
+        only where there is room left at the end."""
+        segs = [x for x in segs if x]
+        rest = first if rest is None else rest
+        one = sep.join(segs)
+        if len(one.encode()) <= first:
+            with_hint = one + SEP + hint if hint and one else one
+            return [with_hint if len(with_hint.encode()) <= first else one] if one else []
+        for label in (LABEL, LABEL + 2):  # "9/9 ", then "10/12 " when it takes ten or more
+            b1, b2 = first - label, rest - label
+            parts = fill(segs, b1, b2, sep)
+            if len(parts) < 10:
+                break
+        room = b1 if len(parts) == 1 else b2
+        if hint and len((parts[-1] + SEP + hint).encode()) <= room:
+            parts[-1] += SEP + hint
         n = len(parts)
         return [f"{i}/{n} {p}" for i, p in enumerate(parts, 1)]
+
+
+def pieces(s: str, b: int) -> list:
+    """A segment too long for one message, cut at ', ' (else at a space) into pieces of at most b bytes."""
+    out = []
+    while len(s.encode()) > b:
+        n = len(s)
+        while n > 1 and len(s[:n].encode()) > b:
+            n -= 1
+        cut = s.rfind(", ", 0, n)
+        if cut < n // 3:
+            cut = s.rfind(" ", 0, n)
+        if cut < n // 3:
+            cut = n
+        out.append(s[:cut].rstrip(", "))
+        s = s[cut:].lstrip(", ")
+    return out + ([s] if s else [])
+
+
+def fill(segs: list, b1: int, b2: int, sep: str) -> list:
+    """Segments into messages of b1 bytes (the first) and b2 (the rest). A segment that fits a message of its own is
+    never split; a longer one is cut into pieces."""
+    parts, cur, cap = [], "", b1
+    for seg in segs:
+        for piece in pieces(seg, min(b1, b2)):
+            cand = piece if not cur else cur + sep + piece
+            if len(cand.encode()) <= cap:
+                cur = cand
+            else:
+                parts.append(cur)
+                cur, cap = piece, b2
+    return parts + ([cur] if cur else [])

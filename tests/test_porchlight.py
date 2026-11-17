@@ -46,8 +46,20 @@ class FakePorch:
 @pytest.fixture
 def speaker(tmp_path):
     s = sp.Speaker(tmp_path, FakePorch(), Store(), lambda: VIEW)
-    s.configure({"reply_hop_seconds": 0, "reply_jitter_seconds": 0})
+    s.configure({"reply_hop_seconds": 0, "reply_jitter_seconds": 0, "part_gap_s": 0})
     return s
+
+
+def hear_all(s, sender, text, settle=0.3):
+    """Every message of an answer (multi-part answers keep posting after the first)."""
+    n = len(s.porch.said)
+    hear(s, sender, text)
+    last, t = len(s.porch.said), time.time()
+    while time.time() - t < settle:
+        time.sleep(0.05)
+        if len(s.porch.said) != last:
+            last, t = len(s.porch.said), time.time()
+    return s.porch.said[n:]
 
 
 def hear(s, sender, text, hops=1, age=0):
@@ -84,8 +96,10 @@ def test_first_knock_gets_one_welcome_then_the_list(speaker):
 
 
 def test_help_does_not_use_up_the_welcome(speaker):
-    out = hear(speaker, "Newcomer", "help")
-    assert len(out) == 1 and "Porchlight shows busy channels" in out[0] and "Send porchlight" in out[0] and fits(out[0])
+    out = hear_all(speaker, "Newcomer", "help")
+    text = " ".join(out)
+    assert "Porchlight shows busy channels" in text and "Send porchlight" in text and "Post #name to add one" in text
+    assert all(fits(x) for x in out)
     assert speaker.is_new_visitor("Newcomer")
 
 
@@ -114,12 +128,14 @@ def test_names_sent_in(speaker):
     assert "#newchan" in speaker.store.submitted
 
 
-def test_help_fits_one_packet_for_long_names_and_areas(speaker):
+def test_help_is_complete_for_long_names_and_areas(speaker):
     speaker.porch.area = "Rancho Santa Margarita, CA"
-    for tag in ("@[A] ", "@[A_Very_Long_Name_23] ", f"@[{LONGEST_NAME}] "):
-        text = speaker.help_text(speaker.porch.budget(tag))
-        assert text.startswith("Porchlight shows") and "Send porchlight" in text
-        assert fits(tag + text) and packet_bytes(tag + text) <= 99
+    for name in ("A", "A_Very_Long_Name_23", LONGEST_NAME):
+        parts = speaker.pack(speaker.help_segments(), speaker.porch.budget(f"@[{name}] "), speaker.porch.budget(), sep=" ")
+        sent = [f"@[{name}] {parts[0]}"] + parts[1:]
+        assert all(fits(x) and packet_bytes(x) <= 99 for x in sent), sent
+        whole = " ".join(sp.PART_RE_OUT.sub("", x) for x in parts)
+        assert "Rancho Santa Margarita, CA" in whole and "Send porchlight" in whole and "Post #name to add one" in whole
 
 
 def test_every_reply_stays_one_small_packet_even_for_the_longest_name(speaker):
@@ -134,7 +150,7 @@ def test_every_reply_stays_one_small_packet_even_for_the_longest_name(speaker):
 
 
 def test_part_labels_are_short_and_still_recognised():
-    parts = sp.Speaker.pack(type("S", (), {"c": lambda self, k, d: d})(), ["a" * 50, "b" * 50], 60)
+    parts = sp.Speaker.pack(None, ["a" * 50, "b" * 50], 60)
     assert parts == ["1/2 " + "a" * 50, "2/2 " + "b" * 50]
     assert sp.OTHER_REPLY_RE.match("@[X] 1/2 Busiest, 3 days: #test 4")
 
@@ -407,3 +423,87 @@ def test_knock_knock_is_a_knock(speaker, text):
 @pytest.mark.parametrize("text", ["knock it off", "knock knock knock", "who knocks", "knockout"])
 def test_other_knock_words_are_not(speaker, text):
     assert not hear(speaker, f"Visitor-{text}", text)
+
+
+# ---- nothing is cut, @[who] only on the first message ----
+
+MANY = {"channels": [chan(f"#channel-with-a-long-name-{i}", 50 - i) for i in range(8)]
+        + [chan(f"#brand-new-{i}", 1, kind="discovered", found_at=NOW - 60 * i) for i in range(4)],
+        "regions": {"window_days": 3, "top": [], "unknown": 0}}
+
+
+def test_a_long_answer_sends_every_channel_and_tags_only_the_first(speaker):
+    speaker.view_fn = lambda: MANY
+    speaker.configure({"reply_hop_seconds": 0, "reply_jitter_seconds": 0, "part_gap_s": 0, "top_count": 8})
+    speaker.mark_greeted("Ann")
+    out = hear_all(speaker, "Ann", "porchlight")
+    assert len(out) >= 3
+    assert out[0].startswith("@[Ann] 1/") and not any("@[" in x for x in out[1:])
+    assert all(sp.PART_RE_OUT.match(x) for x in out[1:])
+    text = " ".join(out)
+    for i in range(8):
+        assert f"#channel-with-a-long-name-{i}" in text, i  # none dropped
+    for i in range(4):
+        assert f"#brand-new-{i}" in text
+    assert all(fits(x) and not x.endswith("...") for x in out)
+
+
+def test_three_names_sent_in_all_get_an_answer(speaker):
+    speaker.porch.area = "Rancho Santa Margarita, CA"
+    out = hear_all(speaker, LONGEST_NAME, "#first-long-name #second-long-name #third-long-name")
+    text = " ".join(out)
+    assert all(n in text for n in ("#first-long-name", "#second-long-name", "#third-long-name"))
+    assert all(fits(x) and not x.endswith("...") for x in out)
+    assert out[0].startswith(f"@[{LONGEST_NAME}]") and not any("@[" in x for x in out[1:])
+
+
+def test_a_part_asked_for_again_fits_with_or_without_the_tag(speaker):
+    speaker.view_fn = lambda: MANY
+    speaker.configure({"reply_hop_seconds": 0, "reply_jitter_seconds": 0, "part_gap_s": 0, "top_count": 8})
+    speaker.mark_greeted(LONGEST_NAME)
+    first = hear_all(speaker, LONGEST_NAME, "porchlight")
+    n = len(first)
+    again = hear_all(speaker, LONGEST_NAME, f"porchlight 2 of {n}")
+    assert len(again) == 1 and fits(again[0]) and "2/" in again[0]
+
+
+# ---- porches never answer each other ----
+
+def test_nothing_a_porch_says_is_answered_even_under_another_name(speaker):
+    speaker.view_fn = lambda: MANY
+    speaker.configure({"reply_hop_seconds": 0, "reply_jitter_seconds": 0, "part_gap_s": 0, "top_count": 8})
+    (speaker.path.parent / "other").mkdir(exist_ok=True)
+    other = sp.Speaker(speaker.path.parent / "other", FakePorch(), Store(), lambda: MANY)
+    other.configure({"reply_hop_seconds": 0, "reply_jitter_seconds": 0, "part_gap_s": 0, "top_count": 8})
+    porch_output = hear_all(other, "Ann", "porchlight") + hear_all(other, "Bo", "help") \
+        + hear_all(other, "Cy", "#first-long-name #second-long-name #third-long-name") + ["#wx (Springfield, IL)"]
+    assert len(porch_output) > 4
+    for line in porch_output:  # heard from a porch whose name isn't "Porchlight" (old or renamed install)
+        assert hear(speaker, "Renamed Porch", line) == [], line
+
+
+def test_two_porches_hearing_each_other_answer_a_knock_once(tmp_path):
+    """Wire two porches together: everything one says, the other hears. One knock, one answer, then silence."""
+    a_dir, b_dir = tmp_path / "a", tmp_path / "b"
+    a_dir.mkdir(), b_dir.mkdir()
+    a = sp.Speaker(a_dir, FakePorch(), Store(), lambda: VIEW)
+    b = sp.Speaker(b_dir, FakePorch(), Store(), lambda: VIEW)
+    a.configure({"reply_hop_seconds": 0.0, "reply_jitter_seconds": 0, "part_gap_s": 0})
+    b.configure({"reply_hop_seconds": 0.4, "reply_jitter_seconds": 0, "part_gap_s": 0})  # b is farther away
+
+    def wire(src, dst, name):
+        say = src.porch.say
+
+        def relay(text, **k):
+            say(text, **k)
+            dst.hear({"t": time.time(), "sender": name, "text": text, "hops": 1})
+            return True
+        src.porch.say = relay
+    wire(a, b, pc.NODE_NAME)
+    wire(b, a, "Old Porch")  # one of them even under another name
+    for s in (a, b):
+        s.hear({"t": time.time(), "sender": "Ann", "text": "porchlight", "hops": 1})
+    time.sleep(1.5)
+    assert any(x.startswith("@[Ann]") for x in a.porch.said)
+    assert not b.porch.said  # heard a's answer, stayed quiet
+    assert all(not x.startswith("@[Porchlight]") and not x.startswith("@[Old Porch]") for x in a.porch.said)

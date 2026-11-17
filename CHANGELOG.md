@@ -32,6 +32,11 @@ Fixes from the openHop plugin catalogue review.
   CoreScope is read once a day by the job, never by porches. A name in the catalogue is only tried: a channel still
   counts as new on a porch only when that porch first decodes it. New default `name_sources`; an existing install
   keeps its own list until it adds the new source.
+- **Nothing in an answer is cut.** Channel lists, the newest names, new regions, help and replies to names sent in
+  go out in full; what doesn't fit one message continues in the next (cut between channels, never inside one). Only
+  the first message carries `@[who]`, which leaves more room in the rest; follow-ups have their `2/3` label.
+- **Porches never answer each other, even under another name.** Besides ignoring senders named Porchlight, a porch
+  ignores anything shaped like Porchlight's own output (`@[who] ...` answers, `2/3` parts, `#name (Area)`).
 - **`knock` and `knock knock` are knocks too**, when they are the whole message ("knock it off" is not).
 - Tests for each of these, including the page's token handling run in node against a fake openHop.
 
